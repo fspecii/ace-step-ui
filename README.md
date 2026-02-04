@@ -5,36 +5,75 @@
 <h1 align="center">ACE-Step UI</h1>
 
 <p align="center">
-  <strong>A professional, local-first music generation studio for <a href="https://github.com/ace-step/ACE-Step">ACE-Step 1.5</a></strong>
+  <strong>The Ultimate Open Source Suno Alternative</strong><br>
+  <em>Seamless integration with <a href="https://github.com/ace-step/ACE-Step">ACE-Step 1.5</a> - The Open Source AI Music Generation Model</em>
 </p>
 
 <p align="center">
-  <a href="#features">Features</a> •
-  <a href="#demo">Demo</a> •
-  <a href="#installation">Installation</a> •
-  <a href="#usage">Usage</a> •
-  <a href="#configuration">Configuration</a> •
-  <a href="#credits">Credits</a>
+  <a href="https://www.youtube.com/@Ambsd-yy7os">
+    <img src="https://img.shields.io/badge/▶_Subscribe-YouTube-FF0000?style=for-the-badge&logo=youtube" alt="Subscribe on YouTube">
+  </a>
+  <a href="https://x.com/AmbsdOP">
+    <img src="https://img.shields.io/badge/Follow-@AmbsdOP-1DA1F2?style=for-the-badge&logo=x&logoColor=white" alt="Follow on X">
+  </a>
+</p>
+
+<p align="center">
+  <a href="#-why-ace-step-ui">Why ACE-Step</a> •
+  <a href="#-features">Features</a> •
+  <a href="#-demo">Demo</a> •
+  <a href="#-installation">Installation</a> •
+  <a href="#-usage">Usage</a> •
+  <a href="#-contributing">Contributing</a>
 </p>
 
 <p align="center">
   <img src="https://img.shields.io/badge/React-18.3-61DAFB?style=flat-square&logo=react" alt="React">
-  <img src="https://img.shields.io/badge/Express-4.x-000000?style=flat-square&logo=express" alt="Express">
   <img src="https://img.shields.io/badge/TypeScript-5.x-3178C6?style=flat-square&logo=typescript" alt="TypeScript">
   <img src="https://img.shields.io/badge/TailwindCSS-3.x-06B6D4?style=flat-square&logo=tailwindcss" alt="TailwindCSS">
-  <img src="https://img.shields.io/badge/SQLite-3-003B57?style=flat-square&logo=sqlite" alt="SQLite">
+  <img src="https://img.shields.io/badge/SQLite-Local_First-003B57?style=flat-square&logo=sqlite" alt="SQLite">
   <img src="https://img.shields.io/badge/License-MIT-green?style=flat-square" alt="License">
+  <img src="https://img.shields.io/github/stars/fspecii/ace-step-ui?style=flat-square" alt="Stars">
 </p>
 
 ---
 
-## Demo
+## 🚀 Why ACE-Step UI?
+
+**Tired of paying $10+/month for Suno or Udio?** ACE-Step 1.5 is the **open source Suno killer** that runs locally on your own GPU - and ACE-Step UI gives you a **beautiful, professional interface** to harness its full power.
+
+| Feature | Suno/Udio | ACE-Step UI |
+|---------|-----------|-------------|
+| **Cost** | $10-50/month | **FREE forever** |
+| **Privacy** | Cloud-based | **100% local** |
+| **Ownership** | Licensed | **You own everything** |
+| **Customization** | Limited | **Full control** |
+| **Queue Limits** | Restricted | **Unlimited** |
+| **Commercial Use** | Expensive tiers | **No restrictions** |
+
+### What Makes ACE-Step 1.5 Special?
+
+- **State-of-the-art quality** rivaling commercial services
+- **Full song generation** up to 4+ minutes with vocals
+- **Runs locally** - no internet required after setup
+- **Open source** - inspect, modify, improve
+- **Active development** - constant improvements
+
+---
+
+## 🎬 Demo
 
 <p align="center">
-  <img src="docs/demo.gif" alt="ACE-Step UI Preview" width="100%">
+  <img src="docs/demo.gif" alt="ACE-Step UI - Open Source Suno Alternative" width="100%">
 </p>
 
-## Features
+<p align="center">
+  <em>Generate professional AI music with a Spotify-like interface - 100% free and local</em>
+</p>
+
+---
+
+## ✨ Features
 
 ### 🎵 AI Music Generation
 | Feature | Description |
@@ -81,7 +120,9 @@
 | **Video Generator** | Create music videos with Pexels backgrounds |
 | **Gradient Covers** | Beautiful procedural album art (no internet needed) |
 
-## Tech Stack
+---
+
+## 💻 Tech Stack
 
 | Layer | Technologies |
 |-------|-------------|
@@ -90,7 +131,9 @@
 | **AI Engine** | [ACE-Step 1.5](https://github.com/ace-step/ACE-Step) |
 | **Audio Tools** | AudioMass, Demucs, FFmpeg |
 
-## Requirements
+---
+
+## 📋 Requirements
 
 | Requirement | Specification |
 |-------------|---------------|
@@ -100,7 +143,9 @@
 | **FFmpeg** | For audio processing |
 | **uv** | Python package manager (recommended) |
 
-## Quick Start
+---
+
+## ⚡ Quick Start
 
 ```bash
 # 1. Start ACE-Step API (in ACE-Step directory)
@@ -112,14 +157,16 @@ cd ace-step-ui
 ./start.sh
 ```
 
-Open **http://localhost:3000**
+Open **http://localhost:3000** and start creating!
 
-## Installation
+---
 
-### 1. Install ACE-Step
+## 📦 Installation
+
+### 1. Install ACE-Step (The AI Engine)
 
 ```bash
-# Clone ACE-Step
+# Clone ACE-Step - the open source Suno alternative
 git clone https://github.com/ace-step/ACE-Step
 cd ACE-Step
 
@@ -131,18 +178,18 @@ uv pip install -e .
 cd ..
 ```
 
-### 2. Install ACE-Step UI
+### 2. Install ACE-Step UI (This Repository)
 
 ```bash
-# Clone this repository
+# Clone the UI
 git clone https://github.com/fspecii/ace-step-ui
 cd ace-step-ui
 
-# Run setup script
+# Run setup script (installs all dependencies)
 ./setup.sh
 ```
 
-**Or manually:**
+**Or install manually:**
 
 ```bash
 # Install frontend dependencies
@@ -157,7 +204,9 @@ cd ..
 cp server/.env.example server/.env
 ```
 
-## Usage
+---
+
+## 🎮 Usage
 
 ### Step 1: Start ACE-Step API Server
 
@@ -175,175 +224,92 @@ cd ace-step-ui
 ./start.sh
 ```
 
-**Or manually in two terminals:**
+### Step 3: Create Music!
 
-```bash
-# Terminal 1 - Backend
-cd server && npm run dev
-
-# Terminal 2 - Frontend
-npm run dev
-```
-
-### Step 3: Open the UI
-
-| Mode | URL |
-|------|-----|
+| Access | URL |
+|--------|-----|
 | Local | http://localhost:3000 |
-| LAN | http://YOUR_IP:3000 |
+| LAN (other devices) | http://YOUR_IP:3000 |
 
-On first launch, you'll be asked to set a username. This is stored locally.
+---
 
-## Configuration
-
-### Environment Variables
+## ⚙️ Configuration
 
 Edit `server/.env`:
 
 ```env
 # Server
 PORT=3001
-NODE_ENV=development
 
-# ACE-Step API
+# ACE-Step API (seamless integration)
 ACESTEP_API_URL=http://localhost:8001
 
-# Database
+# Database (local-first, no cloud)
 DATABASE_PATH=./data/acestep.db
-
-# Storage
-AUDIO_DIR=./public/audio
 
 # Optional: Pexels API for video backgrounds
 PEXELS_API_KEY=your_key_here
 ```
 
-### LAN Access
+---
 
-ACE-Step UI automatically supports LAN access. Start the servers and access from any device:
-
-1. Find your computer's IP: `hostname -I` (Linux) or `ipconfig` (Windows)
-2. Open `http://YOUR_IP:3000` on any device
-
-## Generation Modes
+## 🎼 Generation Modes
 
 ### Simple Mode
-Enter a description of the music you want. The AI handles the rest.
+Just describe what you want. ACE-Step handles the rest.
+
+> "An upbeat pop song about summer adventures with catchy hooks"
 
 ### Custom Mode
-Fine-tune every parameter:
+Full control over every parameter:
 
 | Parameter | Description |
 |-----------|-------------|
-| **Title** | Song title |
-| **Lyrics** | Full lyrics with structure tags `[Verse]`, `[Chorus]`, etc. |
-| **Style** | Genre, mood, instruments, tempo descriptors |
+| **Lyrics** | Full lyrics with `[Verse]`, `[Chorus]` tags |
+| **Style** | Genre, mood, instruments, tempo |
 | **Duration** | 30-240 seconds |
 | **BPM** | 60-200 beats per minute |
 | **Key** | Musical key (C major, A minor, etc.) |
-| **Time Signature** | 4/4, 3/4, 6/8, etc. |
 
-### Advanced Settings
+---
 
-| Setting | Description |
-|---------|-------------|
-| **Inference Steps** | Higher = better quality, slower (default: 60) |
-| **Guidance Scale** | Prompt adherence strength (default: 15) |
-| **Batch Size** | Number of variations to generate |
-| **Thinking Mode** | AI prompt enhancement |
-| **Random Seed** | For reproducible results |
+## 🔧 Built-in Tools
 
-## Built-in Tools
+| Tool | Description |
+|------|-------------|
+| **🎚️ Audio Editor** | Cut, trim, fade, and apply effects |
+| **🎤 Stem Extraction** | Separate vocals, drums, bass, other |
+| **🎬 Video Generator** | Create music videos with stock footage |
+| **🎨 Album Art** | Auto-generated gradient covers |
 
-### Audio Editor
-Click the edit icon on any song to open AudioMass:
-- Cut, copy, paste audio
-- Apply fades and effects
-- Export in multiple formats
+---
 
-### Stem Extraction
-Separate any song into:
-- 🎤 Vocals
-- 🥁 Drums
-- 🎸 Bass
-- 🎹 Other instruments
-
-### Video Generator
-Create music videos with:
-- Pexels stock footage (requires API key)
-- Gradient animations
-- Lyrics overlay
-- Album art display
-
-## Troubleshooting
+## 🐛 Troubleshooting
 
 | Issue | Solution |
 |-------|----------|
 | **ACE-Step API not reachable** | Ensure `uv run acestep-api --port 8001` is running |
-| **CUDA out of memory** | Close other GPU apps, reduce duration/batch size |
+| **CUDA out of memory** | Close other GPU apps, reduce duration |
 | **Songs show 0:00 duration** | Install FFmpeg: `sudo apt install ffmpeg` |
 | **LAN access not working** | Check firewall allows ports 3000 and 3001 |
-| **Liked songs not saving** | Refresh page, check browser console for errors |
 
-## Project Structure
+---
 
-```
-ace-step-ui/
-├── components/           # React components
-│   ├── CreatePanel.tsx   # Main generation form
-│   ├── Player.tsx        # Bottom audio player
-│   ├── LibraryView.tsx   # Song library
-│   └── ...
-├── server/
-│   ├── src/
-│   │   ├── routes/       # API endpoints
-│   │   ├── services/     # Business logic
-│   │   └── db/           # SQLite database
-│   ├── public/
-│   │   ├── audio/        # Generated audio files
-│   │   └── demucs-web/   # Stem extraction UI
-│   └── audio-editor/     # AudioMass editor
-├── services/             # Frontend API client
-├── context/              # React context providers
-└── docs/                 # Documentation & assets
-```
+## 🤝 Contributing
 
-## API Endpoints
+**We need your help to make ACE-Step UI even better!**
 
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| `POST` | `/api/generate` | Start music generation |
-| `GET` | `/api/generate/status/:id` | Get job status |
-| `GET` | `/api/songs` | Get user's songs |
-| `POST` | `/api/songs/:id/like` | Toggle like |
-| `GET` | `/api/playlists` | Get playlists |
-| `POST` | `/api/playlists` | Create playlist |
+This is a community-driven project and contributions are what make open source amazing. Whether you're fixing bugs, adding features, improving documentation, or sharing ideas - every contribution counts!
 
-## Development
+### Ways to Contribute
 
-```bash
-# Development mode with hot reload
-./start.sh
+- 🐛 **Report bugs** - Found an issue? Open a GitHub issue
+- 💡 **Suggest features** - Have an idea? We'd love to hear it
+- 🔧 **Submit PRs** - Code contributions are always welcome
+- 📖 **Improve docs** - Help others get started
+- ⭐ **Star the repo** - Show your support!
 
-# Build for production
-npm run build
-cd server && npm run build
-```
-
-## Credits
-
-- **[ACE-Step](https://github.com/ace-step/ACE-Step)** - AI music generation model
-- **[AudioMass](https://github.com/pkalogiros/AudioMass)** - Web audio editor
-- **[Demucs](https://github.com/facebookresearch/demucs)** - Audio source separation
-- **[Pexels](https://www.pexels.com)** - Stock video backgrounds
-
-## License
-
-This project is open source under the [MIT License](LICENSE).
-
-## Contributing
-
-Contributions are welcome! Please feel free to:
+### How to Contribute
 
 1. Fork the repository
 2. Create a feature branch (`git checkout -b feature/amazing-feature`)
@@ -353,6 +319,53 @@ Contributions are welcome! Please feel free to:
 
 ---
 
+## 📣 Stay Connected
+
 <p align="center">
-  Made with ❤️ for the open-source AI music community
+  <a href="https://www.youtube.com/@Ambsd-yy7os">
+    <img src="https://img.shields.io/badge/YouTube-Subscribe_for_Tutorials-FF0000?style=for-the-badge&logo=youtube" alt="YouTube">
+  </a>
+</p>
+
+<p align="center">
+  <a href="https://x.com/AmbsdOP">
+    <img src="https://img.shields.io/badge/X_(Twitter)-Follow_for_Updates-1DA1F2?style=for-the-badge&logo=x&logoColor=white" alt="X/Twitter">
+  </a>
+</p>
+
+<p align="center">
+  <strong>Subscribe and follow for:</strong><br>
+  🎥 Video tutorials and demos<br>
+  🚀 New feature announcements<br>
+  💡 Tips and tricks<br>
+  🎵 AI music generation news
+</p>
+
+---
+
+## 🙏 Credits
+
+- **[ACE-Step](https://github.com/ace-step/ACE-Step)** - The revolutionary open source AI music generation model
+- **[AudioMass](https://github.com/pkalogiros/AudioMass)** - Web audio editor
+- **[Demucs](https://github.com/facebookresearch/demucs)** - Audio source separation
+- **[Pexels](https://www.pexels.com)** - Stock video backgrounds
+
+---
+
+## 📄 License
+
+This project is open source under the [MIT License](LICENSE).
+
+---
+
+<p align="center">
+  <strong>⭐ If ACE-Step UI helps you create amazing music, please star this repo! ⭐</strong>
+</p>
+
+<p align="center">
+  <em>Made with ❤️ for the open-source AI music community</em>
+</p>
+
+<p align="center">
+  <strong>Stop paying for Suno. Start creating with ACE-Step.</strong>
 </p>
