@@ -24,6 +24,7 @@ import playlistsRoutes from './routes/playlists.js';
 import contactRoutes from './routes/contact.js';
 import referenceTrackRoutes from './routes/referenceTrack.js';
 import { pool } from './db/pool.js';
+import './db/migrate.js';
 
 const app = express();
 
