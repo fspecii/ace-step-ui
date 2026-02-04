@@ -9,7 +9,6 @@ import json
 import os
 import sys
 import time
-import torch
 
 # Get ACE-Step path from environment or use default
 ACESTEP_PATH = os.environ.get('ACESTEP_PATH', '/home/ambsd/Desktop/aceui/ACE-Step-1.5')
@@ -21,26 +20,62 @@ from acestep.inference import format_sample
 # Global handler
 _llm_handler = None
 
-def get_model_by_vram():
-    """Select model based on available GPU VRAM."""
-    if not torch.cuda.is_available():
-        return "acestep-5Hz-lm-0.6B"
+def find_smallest_lm_model(checkpoint_dir):
+    """Find the smallest acestep-5Hz-lm model in checkpoint directory.
     
-    vram_gb = torch.cuda.get_device_properties(0).total_memory / (1024**3)
+    Returns the model name (e.g., 'acestep-5Hz-lm-0.6B') or None if not found.
+    """
+    if not os.path.exists(checkpoint_dir):
+        return None
     
-    if vram_gb < 8:
-        return "acestep-5Hz-lm-0.6B"
-    elif vram_gb <= 16:
-        return "acestep-5Hz-lm-1.7B"
-    else:
-        return "acestep-5Hz-lm-4B"
+    try:
+        # List all directories in checkpoint_dir
+        entries = os.listdir(checkpoint_dir)
+        lm_models = []
+        
+        for entry in entries:
+            if entry.startswith("acestep-5Hz-lm-"):
+                full_path = os.path.join(checkpoint_dir, entry)
+                if os.path.isdir(full_path):
+                    lm_models.append(entry)
+        
+        if not lm_models:
+            return None
+        
+        # Extract size from model name (e.g., "0.6B" from "acestep-5Hz-lm-0.6B")
+        def extract_size(model_name):
+            parts = model_name.replace("acestep-5Hz-lm-", "").upper()
+            # Handle formats like "0.6B", "4B", etc.
+            if parts.endswith("B"):
+                size_str = parts[:-1]
+                try:
+                    return float(size_str)
+                except ValueError:
+                    return float('inf')  # Invalid format, put at end
+            return float('inf')
+        
+        # Sort by size and return smallest
+        lm_models.sort(key=extract_size)
+        return lm_models[0]
+    
+    except Exception as e:
+        print(f"Warning: Error finding LM model: {e}", file=sys.stderr)
+        return None
 
 def get_llm_handler():
     global _llm_handler
     if _llm_handler is None:
         _llm_handler = LLMHandler()
         checkpoint_dir = os.path.join(ACESTEP_PATH, "checkpoints")
-        lm_model_path = get_model_by_vram()
+        
+        # Auto-detect smallest LM model
+        lm_model_path = find_smallest_lm_model(checkpoint_dir)
+        if lm_model_path:
+            print(f"Using detected LM model: {lm_model_path}", file=sys.stderr)
+        else:
+            # Fallback to default
+            lm_model_path = "acestep-5Hz-lm-0.6B"
+            print(f"No LM model detected, using default: {lm_model_path}", file=sys.stderr)
 
         status, success = _llm_handler.initialize(
             checkpoint_dir=checkpoint_dir,

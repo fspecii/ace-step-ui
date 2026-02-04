@@ -371,9 +371,9 @@ router.get('/status/:jobId', authMiddleware, async (req: AuthenticatedRequest, r
 
                 await pool.query(
                   `INSERT INTO songs (id, user_id, title, lyrics, style, caption, audio_url,
-                                      duration, bpm, key_scale, time_signature, tags, is_public, generation_params,
+                                      duration, bpm, key_scale, time_signature, tags, is_public, model, generation_params,
                                       created_at, updated_at)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, datetime('now'), datetime('now'))`,
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, datetime('now'), datetime('now'))`,
                   [
                     songId,
                     req.user!.id,
@@ -387,6 +387,7 @@ router.get('/status/:jobId', authMiddleware, async (req: AuthenticatedRequest, r
                     aceStatus.result.keyScale || params.keyScale,
                     aceStatus.result.timeSignature || params.timeSignature,
                     JSON.stringify([]),
+                    params.model || 'acestep-v15-base',
                     JSON.stringify(params),
                   ]
                 );
@@ -397,9 +398,9 @@ router.get('/status/:jobId', authMiddleware, async (req: AuthenticatedRequest, r
                 // Still create song record with remote URL
                 await pool.query(
                   `INSERT INTO songs (id, user_id, title, lyrics, style, caption, audio_url,
-                                      duration, bpm, key_scale, time_signature, tags, is_public, generation_params,
+                                      duration, bpm, key_scale, time_signature, tags, is_public, model, generation_params,
                                       created_at, updated_at)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, datetime('now'), datetime('now'))`,
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, datetime('now'), datetime('now'))`,
                   [
                     songId,
                     req.user!.id,
@@ -413,6 +414,7 @@ router.get('/status/:jobId', authMiddleware, async (req: AuthenticatedRequest, r
                     aceStatus.result.keyScale || params.keyScale,
                     aceStatus.result.timeSignature || params.timeSignature,
                     JSON.stringify([]),
+                    params.model || 'acestep-v15-base',
                     JSON.stringify(params),
                   ]
                 );

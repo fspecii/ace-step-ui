@@ -106,6 +106,7 @@ export interface Song {
   user_id?: string;
   created_at: string;
   creator?: string;
+  model?: string;
 }
 
 // Transform songs to have proper audio URLs

@@ -16,6 +16,7 @@ export interface Song {
   userId?: string;
   creator?: string;
   creator_avatar?: string;
+  model?: string; // Model used for generation (e.g., 'acestep-v15-turbo')
 }
 
 export interface Playlist {
@@ -55,6 +56,7 @@ export interface GenerationParams {
   lyrics: string;
   style: string;
   title: string;
+  model?: string;
 
   // Common
   instrumental: boolean;

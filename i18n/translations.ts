@@ -37,6 +37,8 @@ export const translations = {
     failedToCreatePlaylist: 'Failed to create playlist',
     songAddedToPlaylist: 'Song added to playlist',
     failedToAddSong: 'Failed to add song to playlist',
+    songDeleted: 'Song deleted successfully',
+    failedToDeleteSong: 'Failed to delete song',
     
     // Sidebar
     aceStepUI: 'ACE-Step UI',
@@ -423,6 +425,8 @@ export const translations = {
     failedToCreatePlaylist: '创建歌单失败',
     songAddedToPlaylist: '已添加到歌单',
     failedToAddSong: '添加歌曲失败',
+    songDeleted: '歌曲删除成功',
+    failedToDeleteSong: '删除歌曲失败',
     
     // Sidebar
     aceStepUI: 'ACE-Step UI',
@@ -809,6 +813,8 @@ export const translations = {
     failedToCreatePlaylist: 'プレイリストの作成に失敗しました',
     songAddedToPlaylist: 'プレイリストに追加しました',
     failedToAddSong: '曲の追加に失敗しました',
+    songDeleted: '曲を削除しました',
+    failedToDeleteSong: '曲の削除に失敗しました',
     
     // Sidebar
     aceStepUI: 'ACE-Step UI',
@@ -1195,6 +1201,8 @@ export const translations = {
     failedToCreatePlaylist: '재생목록 생성에 실패했습니다',
     songAddedToPlaylist: '재생목록에 추가되었습니다',
     failedToAddSong: '곡 추가에 실패했습니다',
+    songDeleted: '곡이 삭제되었습니다',
+    failedToDeleteSong: '곡 삭제에 실패했습니다',
     
     // Sidebar
     aceStepUI: 'ACE-Step UI',

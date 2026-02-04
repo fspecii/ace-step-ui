@@ -31,6 +31,21 @@ interface SongListProps {
 // Define Filter Types
 type FilterType = 'liked' | 'public' | 'private' | 'generating';
 
+// Map model ID to short display name
+const getModelDisplayName = (modelId?: string): string => {
+    if (!modelId) return 'v1.5';
+    
+    const mapping: Record<string, string> = {
+        'acestep-v15-base': '1.5B',
+        'acestep-v15-sft': '1.5S',
+        'acestep-v15-turbo-shift1': '1.5TS1',
+        'acestep-v15-turbo-shift3': '1.5TS3',
+        'acestep-v15-turbo-continuous': '1.5TC',
+        'acestep-v15-turbo': '1.5T',
+    };
+    return mapping[modelId] || 'v1.5';
+};
+
 export const SongList: React.FC<SongListProps> = ({
     songs,
     currentSong,
@@ -329,8 +344,8 @@ const SongItem: React.FC<SongItemProps> = ({
                         <h3 className={`font-bold text-lg truncate ${isCurrent ? 'text-pink-600 dark:text-pink-500' : 'text-zinc-900 dark:text-white'}`}>
                             {song.title || (song.isGenerating ? (song.queuePosition ? "Queued..." : "Creating...") : "Untitled")}
                         </h3>
-                        <span className="inline-flex items-center justify-center text-[9px] font-bold text-white bg-gradient-to-r from-pink-500 to-purple-500 px-1.5 py-0.5 rounded-sm shadow-sm">
-                            v1.5
+                        <span className="inline-flex items-center justify-center text-[9px] font-bold text-white bg-gradient-to-r from-pink-500 to-purple-500 px-1.5 py-0.5 rounded-sm shadow-sm" title={`Raw model: ${song.model || 'undefined'}`}>
+                            {getModelDisplayName(song.model)}
                         </span>
                         {song.isPublic === false && (
                             <Lock size={12} className="text-zinc-400 dark:text-zinc-500" />

@@ -69,6 +69,7 @@ function AppContent() {
   // UI State
   const [isGenerating, setIsGenerating] = useState(false);
   const [showRightSidebar, setShowRightSidebar] = useState(true);
+  const [showLeftSidebar, setShowLeftSidebar] = useState(false);
 
   // Mobile UI Toggle
   const [mobileShowList, setMobileShowList] = useState(false);
@@ -285,6 +286,7 @@ function AppContent() {
           viewCount: s.view_count || 0,
           userId: s.user_id,
           creator: s.creator,
+          model: s.model,
         });
 
         const mySongs = mySongsRes.songs.map(mapSong);
@@ -524,6 +526,7 @@ function AppContent() {
         viewCount: s.view_count || 0,
         userId: s.user_id,
         creator: s.creator,
+        model: s.model,
       }));
 
       // Preserve any generating songs that aren't in the loaded list
@@ -807,6 +810,25 @@ function AppContent() {
     }
   };
 
+  const handleDeleteSong = async (song: Song) => {
+    if (!token) return;
+    try {
+      await songsApi.deleteSong(song.id, token);
+      setSongs(prev => prev.filter(s => s.id !== song.id));
+      if (selectedSong?.id === song.id) {
+        setSelectedSong(null);
+      }
+      if (currentSong?.id === song.id) {
+        setCurrentSong(null);
+        setIsPlaying(false);
+      }
+      showToast(t('songDeleted'));
+    } catch (error) {
+      console.error('Delete song error:', error);
+      showToast(t('failedToDeleteSong'), 'error');
+    }
+  };
+
   const handleNavigateToPlaylist = (playlistId: string) => {
     setViewingPlaylistId(playlistId);
     setCurrentView('playlist');
@@ -894,6 +916,7 @@ function AppContent() {
             isPlaying={isPlaying}
             likedSongIds={likedSongIds}
             onToggleLike={toggleLike}
+            onDelete={handleDeleteSong}
           />
         );
 
@@ -947,6 +970,7 @@ function AppContent() {
                 onShowDetails={handleShowDetails}
                 onNavigateToProfile={handleNavigateToProfile}
                 onReusePrompt={handleReuse}
+                onDelete={handleDeleteSong}
               />
             </div>
 
@@ -963,6 +987,7 @@ function AppContent() {
                   onNavigateToSong={handleNavigateToSong}
                   isLiked={selectedSong ? likedSongIds.has(selectedSong.id) : false}
                   onToggleLike={toggleLike}
+                  onDelete={handleDeleteSong}
                 />
               </div>
             )}
@@ -997,6 +1022,7 @@ function AppContent() {
             } else if (v === 'search') {
               window.history.pushState({}, '', '/search');
             }
+            if (isMobile) setShowLeftSidebar(false);
           }}
           theme={theme}
           onToggleTheme={toggleTheme}
@@ -1004,6 +1030,8 @@ function AppContent() {
           onLogin={() => setShowUsernameModal(true)}
           onLogout={logout}
           onOpenSettings={() => setShowSettingsModal(true)}
+          isOpen={showLeftSidebar}
+          onToggle={() => setShowLeftSidebar(!showLeftSidebar)}
         />
 
         <main className="flex-1 flex overflow-hidden relative">
@@ -1032,6 +1060,7 @@ function AppContent() {
         onOpenVideo={() => currentSong && openVideoGenerator(currentSong)}
         onReusePrompt={() => currentSong && handleReuse(currentSong)}
         onAddToPlaylist={() => currentSong && openAddToPlaylistModal(currentSong)}
+        onDelete={() => currentSong && handleDeleteSong(currentSong)}
       />
 
       <CreatePlaylistModal
@@ -1090,6 +1119,7 @@ function AppContent() {
               onNavigateToSong={handleNavigateToSong}
               isLiked={selectedSong ? likedSongIds.has(selectedSong.id) : false}
               onToggleLike={toggleLike}
+              onDelete={handleDeleteSong}
             />
           </div>
         </div>
