@@ -9,6 +9,7 @@ import json
 import os
 import sys
 import time
+import torch
 
 # Get ACE-Step path from environment or use default
 ACESTEP_PATH = os.environ.get('ACESTEP_PATH', '/home/ambsd/Desktop/aceui/ACE-Step-1.5')
@@ -20,13 +21,26 @@ from acestep.inference import format_sample
 # Global handler
 _llm_handler = None
 
+def get_model_by_vram():
+    """Select model based on available GPU VRAM."""
+    if not torch.cuda.is_available():
+        return "acestep-5Hz-lm-0.6B"
+    
+    vram_gb = torch.cuda.get_device_properties(0).total_memory / (1024**3)
+    
+    if vram_gb < 8:
+        return "acestep-5Hz-lm-0.6B"
+    elif vram_gb <= 16:
+        return "acestep-5Hz-lm-1.7B"
+    else:
+        return "acestep-5Hz-lm-4B"
+
 def get_llm_handler():
     global _llm_handler
     if _llm_handler is None:
         _llm_handler = LLMHandler()
-        # Initialize the LLM with the 0.6B model (lighter on VRAM)
         checkpoint_dir = os.path.join(ACESTEP_PATH, "checkpoints")
-        lm_model_path = "acestep-5Hz-lm-0.6B"  # Use the smaller 0.6B model
+        lm_model_path = get_model_by_vram()
 
         status, success = _llm_handler.initialize(
             checkpoint_dir=checkpoint_dir,

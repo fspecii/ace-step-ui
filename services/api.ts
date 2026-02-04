@@ -205,6 +205,9 @@ export interface GenerationParams {
   style: string;
   title: string;
 
+  // Model Selection
+  model?: string;
+
   // Common
   instrumental: boolean;
   vocalLanguage?: string;

@@ -55,6 +55,9 @@ interface GenerateBody {
   style: string;
   title: string;
 
+  // Model Selection
+  model?: string;
+
   // Common
   instrumental: boolean;
   vocalLanguage?: string;
@@ -161,6 +164,7 @@ router.post('/', authMiddleware, async (req: AuthenticatedRequest, res: Response
       lyrics,
       style,
       title,
+      model,
       instrumental,
       vocalLanguage,
       duration,
@@ -224,6 +228,7 @@ router.post('/', authMiddleware, async (req: AuthenticatedRequest, res: Response
       lyrics,
       style,
       title,
+      model,
       instrumental,
       vocalLanguage,
       duration,

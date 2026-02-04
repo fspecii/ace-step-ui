@@ -23,18 +23,27 @@ from acestep.inference import GenerationParams, GenerationConfig, generate_music
 # Global handlers (initialized once)
 _handler = None
 _llm_handler = None
+_current_model = None
 
-def get_handlers():
-    global _handler, _llm_handler
-    if _handler is None:
+def get_handlers(model: str = None):
+    global _handler, _llm_handler, _current_model
+    
+    # Default model if not specified
+    if not model:
+        model = "acestep-v15-turbo"
+    
+    # Reinitialize if model changed
+    if _handler is None or _current_model != model:
         _handler = AceStepHandler()
         _handler.initialize_service(
             project_root=ACESTEP_PATH,
-            config_path="acestep-v15-turbo",
+            config_path=model,
             device="cuda",
-            offload_to_cpu=True,  # For 12GB GPU
+            offload_to_cpu=True,
         )
         _llm_handler = LLMHandler()  # Create but don't initialize (not enough VRAM)
+        _current_model = model
+    
     return _handler, _llm_handler
 
 def generate(
@@ -47,6 +56,9 @@ def generate(
     key_scale: str = "",
     time_signature: str = "",
     vocal_language: str = "auto",
+
+    # Model selection
+    model: str = None,
 
     # Generation parameters
     infer_steps: int = 8,
@@ -86,7 +98,7 @@ def generate(
     output_dir: str = None,
 ):
     """Generate music and return audio file paths."""
-    handler, llm_handler = get_handlers()
+    handler, llm_handler = get_handlers(model)
 
     if output_dir is None:
         output_dir = os.path.join(ACESTEP_PATH, "output")
@@ -175,6 +187,9 @@ def main():
     parser.add_argument("--time-signature", type=str, default="", help="Time signature (2, 3, 4, or 6)")
     parser.add_argument("--vocal-language", type=str, default="auto", help="Vocal language code")
 
+    # Model selection
+    parser.add_argument("--model", type=str, default=None, help="DiT model to use (e.g., 'acestep-v15-turbo', 'acestep-v15-turbo-shift3')")
+
     # Generation parameters
     parser.add_argument("--infer-steps", type=int, default=8, help="Inference steps")
     parser.add_argument("--guidance-scale", type=float, default=10.0, help="Guidance scale")
@@ -228,6 +243,9 @@ def main():
             key_scale=args.key_scale,
             time_signature=args.time_signature,
             vocal_language=args.vocal_language,
+
+            # Model
+            model=args.model,
 
             # Generation
             infer_steps=args.infer_steps,

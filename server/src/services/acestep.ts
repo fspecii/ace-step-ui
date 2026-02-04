@@ -75,6 +75,9 @@ export interface GenerationParams {
   style: string;
   title: string;
 
+  // Model Selection
+  model?: string;
+
   // Common
   instrumental: boolean;
   vocalLanguage?: string;
@@ -276,6 +279,11 @@ async function processGeneration(
       '--output-dir', jobOutputDir,
       '--json',
     ];
+
+    // Model selection
+    if (params.model) {
+      args.push('--model', params.model);
+    }
 
     // Basic parameters
     if (lyrics) {

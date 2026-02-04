@@ -158,6 +158,34 @@ export const CreatePanel: React.FC<CreatePanelProps> = ({ onGenerate, isGenerati
   const [completeTrackClasses, setCompleteTrackClasses] = useState('');
   const [isFormatCaption, setIsFormatCaption] = useState(false);
 
+  // Model selection
+  const [selectedModel, setSelectedModel] = useState<string>('acestep-v15-sft');
+  const [showModelMenu, setShowModelMenu] = useState(false);
+  const modelMenuRef = useRef<HTMLDivElement>(null);
+  
+  // Available models (fixed list from checkpoints directory)
+  const availableModels = useMemo(() => [
+    { id: 'acestep-v15-base', name: 'acestep-v15-base' },
+    { id: 'acestep-v15-sft', name: 'acestep-v15-sft' },
+    { id: 'acestep-v15-turbo', name: 'acestep-v15-turbo' },
+    { id: 'acestep-v15-turbo-shift1', name: 'acestep-v15-turbo-shift1' },
+    { id: 'acestep-v15-turbo-shift3', name: 'acestep-v15-turbo-shift3' },
+    { id: 'acestep-v15-turbo-continuous', name: 'acestep-v15-turbo-continuous' },
+  ], []);
+
+  // Map model ID to short display name
+  const getModelDisplayName = (modelId: string): string => {
+    const mapping: Record<string, string> = {
+      'acestep-v15-base': '1.5B',
+      'acestep-v15-sft': '1.5S',
+      'acestep-v15-turbo-shift1': '1.5TS1',
+      'acestep-v15-turbo-shift3': '1.5TS3',
+      'acestep-v15-turbo-continuous': '1.5TC',
+      'acestep-v15-turbo': '1.5T',
+    };
+    return mapping[modelId] || modelId;
+  };
+
   // Genre selection state (cascading)
   const [selectedMainGenre, setSelectedMainGenre] = useState<string>('');
   const [selectedSubGenre, setSelectedSubGenre] = useState<string>('');
@@ -215,6 +243,21 @@ export const CreatePanel: React.FC<CreatePanelProps> = ({ onGenerate, isGenerati
   });
   const [isResizing, setIsResizing] = useState(false);
   const lyricsRef = useRef<HTMLDivElement>(null);
+
+
+  // Close model menu when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (modelMenuRef.current && !modelMenuRef.current.contains(event.target as Node)) {
+        setShowModelMenu(false);
+      }
+    };
+
+    if (showModelMenu) {
+      document.addEventListener('mousedown', handleClickOutside);
+      return () => document.removeEventListener('mousedown', handleClickOutside);
+    }
+  }, [showModelMenu]);
 
   // Reuse Effect - must be after all state declarations
   useEffect(() => {
@@ -522,6 +565,7 @@ export const CreatePanel: React.FC<CreatePanelProps> = ({ onGenerate, isGenerati
         lyrics,
         style,
         title: bulkCount > 1 ? `${title} (${i + 1})` : title,
+        model: selectedModel || undefined,
         instrumental,
         vocalLanguage,
         bpm,
@@ -618,26 +662,75 @@ export const CreatePanel: React.FC<CreatePanelProps> = ({ onGenerate, isGenerati
           onLoadedMetadata={(e) => setSourceDuration(e.currentTarget.duration || 0)}
         />
 
-        {/* Header - Mode Toggle */}
+        {/* Header - Mode Toggle & Model Selection */}
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></div>
             <span className="text-xs font-medium text-zinc-500 dark:text-zinc-400">ACE-Step v1.5</span>
           </div>
 
-          <div className="flex items-center bg-zinc-200 dark:bg-black/40 rounded-lg p-1 border border-zinc-300 dark:border-white/5">
-            <button
-              onClick={() => setCustomMode(false)}
-              className={`px-3 py-1.5 rounded-md text-xs font-semibold transition-all ${!customMode ? 'bg-white dark:bg-zinc-800 text-black dark:text-white shadow-sm' : 'text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-300'}`}
-            >
-              {t('simple')}
-            </button>
-            <button
-              onClick={() => setCustomMode(true)}
-              className={`px-3 py-1.5 rounded-md text-xs font-semibold transition-all ${customMode ? 'bg-white dark:bg-zinc-800 text-black dark:text-white shadow-sm' : 'text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-300'}`}
-            >
-              {t('custom')}
-            </button>
+          <div className="flex items-center gap-2">
+            {/* Mode Toggle */}
+            <div className="flex items-center bg-zinc-200 dark:bg-black/40 rounded-lg p-1 border border-zinc-300 dark:border-white/5">
+              <button
+                onClick={() => setCustomMode(false)}
+                className={`px-3 py-1.5 rounded-md text-xs font-semibold transition-all ${!customMode ? 'bg-white dark:bg-zinc-800 text-black dark:text-white shadow-sm' : 'text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-300'}`}
+              >
+                {t('simple')}
+              </button>
+              <button
+                onClick={() => setCustomMode(true)}
+                className={`px-3 py-1.5 rounded-md text-xs font-semibold transition-all ${customMode ? 'bg-white dark:bg-zinc-800 text-black dark:text-white shadow-sm' : 'text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-300'}`}
+              >
+                {t('custom')}
+              </button>
+            </div>
+
+            {/* Model Selection */}
+            <div className="relative" ref={modelMenuRef}>
+              <button
+                onClick={() => setShowModelMenu(!showModelMenu)}
+                className="bg-zinc-200 dark:bg-black/40 border border-zinc-300 dark:border-white/5 rounded-md px-2 py-1 text-[11px] font-medium text-zinc-900 dark:text-white hover:bg-zinc-300 dark:hover:bg-black/50 transition-colors flex items-center gap-1"
+                disabled={availableModels.length === 0}
+              >
+                {availableModels.length === 0 ? '...' : getModelDisplayName(selectedModel)}
+                <ChevronDown size={10} className="text-zinc-600 dark:text-zinc-400" />
+              </button>
+              
+              {/* Floating Model Menu */}
+              {showModelMenu && availableModels.length > 0 && (
+                <div className="absolute top-full right-0 mt-1 w-72 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded-xl shadow-2xl z-50 overflow-hidden">
+                  <div className="max-h-96 overflow-y-auto custom-scrollbar">
+                    {availableModels.map(model => (
+                      <button
+                        key={model.id}
+                        onClick={() => {
+                          setSelectedModel(model.id);
+                          setShowModelMenu(false);
+                        }}
+                        className={`w-full px-4 py-3 text-left hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors border-b border-zinc-100 dark:border-zinc-800 last:border-b-0 ${
+                          selectedModel === model.id ? 'bg-zinc-50 dark:bg-zinc-800/50' : ''
+                        }`}
+                      >
+                        <div className="flex items-center justify-between mb-1">
+                          <span className="text-sm font-semibold text-zinc-900 dark:text-white">
+                            {getModelDisplayName(model.id)}
+                          </span>
+                          {selectedModel === model.id && (
+                            <div className="w-4 h-4 rounded-full bg-pink-500 flex items-center justify-center">
+                              <svg className="w-3 h-3 text-white" fill="currentColor" viewBox="0 0 20 20">
+                                <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                              </svg>
+                            </div>
+                          )}
+                        </div>
+                        <p className="text-xs text-zinc-500 dark:text-zinc-400">{model.id}</p>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
         </div>
 
@@ -665,7 +758,7 @@ export const CreatePanel: React.FC<CreatePanelProps> = ({ onGenerate, isGenerati
               <select
                 value={vocalLanguage}
                 onChange={(e) => setVocalLanguage(e.target.value)}
-                className="w-full bg-transparent p-3 text-sm text-zinc-900 dark:text-white focus:outline-none"
+                className="w-full bg-transparent p-3 text-sm text-zinc-900 dark:text-white focus:outline-none cursor-pointer"
               >
                 {VOCAL_LANGUAGE_VALUES.map(lang => (
                   <option key={lang.value} value={lang.value}>{t(lang.key)}</option>
@@ -725,7 +818,7 @@ export const CreatePanel: React.FC<CreatePanelProps> = ({ onGenerate, isGenerati
                   <select
                     value={keyScale}
                     onChange={(e) => setKeyScale(e.target.value)}
-                    className="w-full bg-zinc-50 dark:bg-black/20 border border-zinc-200 dark:border-white/10 rounded-lg px-2 py-1.5 text-xs text-zinc-900 dark:text-white focus:outline-none"
+                    className="w-full bg-zinc-50 dark:bg-black/20 border border-zinc-200 dark:border-white/10 rounded-xl px-2 py-1.5 text-xs text-zinc-900 dark:text-white focus:outline-none focus:border-pink-500 dark:focus:border-pink-500 transition-colors cursor-pointer"
                   >
                     <option value="">Auto</option>
                     {KEY_SIGNATURES.filter(k => k).map(key => (
@@ -738,7 +831,7 @@ export const CreatePanel: React.FC<CreatePanelProps> = ({ onGenerate, isGenerati
                   <select
                     value={timeSignature}
                     onChange={(e) => setTimeSignature(e.target.value)}
-                    className="w-full bg-zinc-50 dark:bg-black/20 border border-zinc-200 dark:border-white/10 rounded-lg px-2 py-1.5 text-xs text-zinc-900 dark:text-white focus:outline-none"
+                    className="w-full bg-zinc-50 dark:bg-black/20 border border-zinc-200 dark:border-white/10 rounded-xl px-2 py-1.5 text-xs text-zinc-900 dark:text-white focus:outline-none focus:border-pink-500 dark:focus:border-pink-500 transition-colors cursor-pointer"
                   >
                     <option value="">Auto</option>
                     {TIME_SIGNATURES.filter(t => t).map(time => (
@@ -1052,7 +1145,7 @@ export const CreatePanel: React.FC<CreatePanelProps> = ({ onGenerate, isGenerati
                           setStyle(prev => prev ? `${prev}, ${e.target.value}` : e.target.value);
                         }
                       }}
-                      className="flex-1 bg-zinc-50 dark:bg-black/20 border border-zinc-200 dark:border-white/10 rounded-lg px-2 py-1.5 text-xs text-zinc-900 dark:text-white focus:outline-none focus:border-pink-500 dark:focus:border-pink-500"
+                      className="flex-1 bg-zinc-50 dark:bg-black/20 border border-zinc-200 dark:border-white/10 rounded-xl px-2 py-1.5 text-xs text-zinc-900 dark:text-white focus:outline-none focus:border-pink-500 dark:focus:border-pink-500 transition-colors cursor-pointer"
                     >
                       <option value="">{t('mainGenre')}</option>
                       {MAIN_STYLES.map(genre => (
@@ -1084,7 +1177,7 @@ export const CreatePanel: React.FC<CreatePanelProps> = ({ onGenerate, isGenerati
                             setStyle(prev => prev ? `${prev}, ${e.target.value}` : e.target.value);
                           }
                         }}
-                        className="flex-1 bg-zinc-50 dark:bg-black/20 border border-zinc-200 dark:border-white/10 rounded-lg px-2 py-1.5 text-xs text-zinc-900 dark:text-white focus:outline-none focus:border-pink-500 dark:focus:border-pink-500"
+                        className="flex-1 bg-zinc-50 dark:bg-black/20 border border-zinc-200 dark:border-white/10 rounded-xl px-2 py-1.5 text-xs text-zinc-900 dark:text-white focus:outline-none focus:border-pink-500 dark:focus:border-pink-500 transition-colors cursor-pointer"
                       >
                         <option value="">{t('subGenre')} ({filteredSubGenres.length})</option>
                         {filteredSubGenres.map(genre => (
@@ -1162,7 +1255,7 @@ export const CreatePanel: React.FC<CreatePanelProps> = ({ onGenerate, isGenerati
                 <select
                   value={vocalLanguage}
                   onChange={(e) => setVocalLanguage(e.target.value)}
-                  className="w-full bg-white dark:bg-suno-card border border-zinc-200 dark:border-white/5 rounded-lg px-3 py-2 text-sm text-zinc-900 dark:text-white focus:outline-none"
+                  className="w-full bg-white dark:bg-suno-card border border-zinc-200 dark:border-white/5 rounded-xl px-3 py-2 text-sm text-zinc-900 dark:text-white focus:outline-none focus:border-pink-500 dark:focus:border-pink-500 transition-colors cursor-pointer"
                 >
                   {VOCAL_LANGUAGE_VALUES.map(lang => (
                     <option key={lang.value} value={lang.value}>{t(lang.key)}</option>
@@ -1210,7 +1303,7 @@ export const CreatePanel: React.FC<CreatePanelProps> = ({ onGenerate, isGenerati
               <select
                 value={keyScale}
                 onChange={(e) => setKeyScale(e.target.value)}
-                className="w-full bg-zinc-50 dark:bg-black/20 border border-zinc-200 dark:border-white/10 rounded-lg px-2 py-1.5 text-xs text-zinc-900 dark:text-white focus:outline-none"
+                className="w-full bg-zinc-50 dark:bg-black/20 border border-zinc-200 dark:border-white/10 rounded-xl px-2 py-1.5 text-xs text-zinc-900 dark:text-white focus:outline-none focus:border-pink-500 dark:focus:border-pink-500 transition-colors cursor-pointer"
               >
                 <option value="">Auto</option>
                 {KEY_SIGNATURES.filter(k => k).map(key => (
@@ -1223,7 +1316,7 @@ export const CreatePanel: React.FC<CreatePanelProps> = ({ onGenerate, isGenerati
               <select
                 value={timeSignature}
                 onChange={(e) => setTimeSignature(e.target.value)}
-                className="w-full bg-zinc-50 dark:bg-black/20 border border-zinc-200 dark:border-white/10 rounded-lg px-2 py-1.5 text-xs text-zinc-900 dark:text-white focus:outline-none"
+                className="w-full bg-zinc-50 dark:bg-black/20 border border-zinc-200 dark:border-white/10 rounded-xl px-2 py-1.5 text-xs text-zinc-900 dark:text-white focus:outline-none focus:border-pink-500 dark:focus:border-pink-500 transition-colors cursor-pointer"
               >
                 <option value="">Auto</option>
                 {TIME_SIGNATURES.filter(t => t).map(time => (
@@ -1359,7 +1452,7 @@ export const CreatePanel: React.FC<CreatePanelProps> = ({ onGenerate, isGenerati
                 <select
                   value={audioFormat}
                   onChange={(e) => setAudioFormat(e.target.value as 'mp3' | 'flac')}
-                  className="w-full bg-zinc-50 dark:bg-black/20 border border-zinc-200 dark:border-white/10 rounded-lg px-2 py-1.5 text-xs text-zinc-900 dark:text-white focus:outline-none"
+                  className="w-full bg-zinc-50 dark:bg-black/20 border border-zinc-200 dark:border-white/10 rounded-xl px-2 py-1.5 text-xs text-zinc-900 dark:text-white focus:outline-none focus:border-pink-500 dark:focus:border-pink-500 transition-colors cursor-pointer"
                 >
                   <option value="mp3">{t('mp3Smaller')}</option>
                   <option value="flac">{t('flacLossless')}</option>
@@ -1370,7 +1463,7 @@ export const CreatePanel: React.FC<CreatePanelProps> = ({ onGenerate, isGenerati
                 <select
                   value={inferMethod}
                   onChange={(e) => setInferMethod(e.target.value as 'ode' | 'sde')}
-                  className="w-full bg-zinc-50 dark:bg-black/20 border border-zinc-200 dark:border-white/10 rounded-lg px-2 py-1.5 text-xs text-zinc-900 dark:text-white focus:outline-none"
+                  className="w-full bg-zinc-50 dark:bg-black/20 border border-zinc-200 dark:border-white/10 rounded-xl px-2 py-1.5 text-xs text-zinc-900 dark:text-white focus:outline-none focus:border-pink-500 dark:focus:border-pink-500 transition-colors cursor-pointer"
                 >
                   <option value="ode">{t('odeDeterministic')}</option>
                   <option value="sde">{t('sdeStochastic')}</option>
@@ -1565,7 +1658,7 @@ export const CreatePanel: React.FC<CreatePanelProps> = ({ onGenerate, isGenerati
                 <select
                   value={taskType}
                   onChange={(e) => setTaskType(e.target.value)}
-                  className="w-full bg-zinc-50 dark:bg-black/20 border border-zinc-200 dark:border-white/10 rounded-lg px-2 py-1.5 text-xs text-zinc-900 dark:text-white focus:outline-none"
+                  className="w-full bg-zinc-50 dark:bg-black/20 border border-zinc-200 dark:border-white/10 rounded-xl px-2 py-1.5 text-xs text-zinc-900 dark:text-white focus:outline-none focus:border-pink-500 dark:focus:border-pink-500 transition-colors cursor-pointer"
                 >
                   <option value="text2music">{t('textToMusic')}</option>
                   <option value="audio2audio">{t('audio2audio')}</option>
