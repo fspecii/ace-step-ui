@@ -1081,6 +1081,26 @@ export default function App() {
     setMobileShowList(false);
   };
 
+  const handleUseUploadAsReference = (track: { audio_url: string; filename: string }) => {
+    setPendingAudioSelection({
+      target: 'reference',
+      url: track.audio_url,
+      title: track.filename.replace(/\.[^/.]+$/, ''),
+    });
+    setCurrentView('create');
+    setMobileShowList(false);
+  };
+
+  const handleCoverUpload = (track: { audio_url: string; filename: string }) => {
+    setPendingAudioSelection({
+      target: 'source',
+      url: track.audio_url,
+      title: track.filename.replace(/\.[^/.]+$/, ''),
+    });
+    setCurrentView('create');
+    setMobileShowList(false);
+  };
+
   const handleBackFromPlaylist = () => {
     setViewingPlaylistId(null);
     setCurrentView('library');
@@ -1232,6 +1252,8 @@ export default function App() {
                 onDeleteMany={handleDeleteSongs}
                 onUseAsReference={handleUseAsReference}
                 onCoverSong={handleCoverSong}
+                onUseUploadAsReference={handleUseUploadAsReference}
+                onCoverUpload={handleCoverUpload}
               />
             </div>
 

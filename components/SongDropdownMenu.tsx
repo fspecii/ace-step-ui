@@ -189,23 +189,29 @@ export const SongDropdownMenu: React.FC<SongDropdownMenuProps> = ({
                 label="Extract Stems"
                 onClick={onExtractStems ? () => handleAction(onExtractStems) : handleExtractStems}
             />
-            <MenuItem
-                icon={<Repeat size={14} />}
-                label="Reuse Prompt"
-                onClick={() => handleAction(onReusePrompt)}
-            />
-            <MenuItem
-                icon={<Layers size={14} />}
-                label="Use as Reference"
-                onClick={() => handleAction(onUseAsReference)}
-                disabled={!song.audioUrl}
-            />
-            <MenuItem
-                icon={<Layers size={14} />}
-                label="Cover Song"
-                onClick={() => handleAction(onCoverSong)}
-                disabled={!song.audioUrl}
-            />
+            {onReusePrompt && (
+                <MenuItem
+                    icon={<Repeat size={14} />}
+                    label="Reuse Prompt"
+                    onClick={() => handleAction(onReusePrompt)}
+                />
+            )}
+            {onUseAsReference && (
+                <MenuItem
+                    icon={<Layers size={14} />}
+                    label="Use as Reference"
+                    onClick={() => handleAction(onUseAsReference)}
+                    disabled={!song.audioUrl}
+                />
+            )}
+            {onCoverSong && (
+                <MenuItem
+                    icon={<Layers size={14} />}
+                    label="Cover Song"
+                    onClick={() => handleAction(onCoverSong)}
+                    disabled={!song.audioUrl}
+                />
+            )}
 
             <MenuDivider />
 

@@ -705,7 +705,7 @@ export const CreatePanel: React.FC<CreatePanelProps> = ({
   };
 
   const handleWorkspaceDrop = (e: React.DragEvent<HTMLDivElement>) => {
-    if (e.dataTransfer.files?.length) {
+    if (e.dataTransfer.files?.length || e.dataTransfer.types.includes('application/x-ace-audio')) {
       handleDrop(e, audioTab);
     }
   };
@@ -815,9 +815,11 @@ export const CreatePanel: React.FC<CreatePanelProps> = ({
           <div className="absolute inset-0 bg-white/70 dark:bg-black/50 backdrop-blur-sm" />
           <div className="absolute inset-0 flex items-center justify-center">
             <div className="flex flex-col items-center gap-2 rounded-2xl border border-zinc-200 dark:border-white/10 bg-white/90 dark:bg-zinc-900/90 px-6 py-5 shadow-xl">
-              <div className={`w-12 h-12 rounded-full ${dragKind === 'audio' ? 'bg-green-500/90' : 'bg-gradient-to-br from-pink-500 to-purple-600'} text-white flex items-center justify-center shadow-lg`}>
-                {dragKind === 'audio' ? <Plus size={22} /> : <Upload size={22} />}
-              </div>
+              {dragKind !== 'audio' && (
+                <div className="w-12 h-12 rounded-full bg-gradient-to-br from-pink-500 to-purple-600 text-white flex items-center justify-center shadow-lg">
+                  <Upload size={22} />
+                </div>
+              )}
               <div className="text-sm font-semibold text-zinc-900 dark:text-white">
                 {dragKind === 'audio' ? 'Drop to use audio' : 'Drop to upload'}
               </div>

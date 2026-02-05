@@ -25,6 +25,8 @@ interface SongListProps {
     onDeleteMany?: (songs: Song[]) => void;
     onUseAsReference?: (song: Song) => void;
     onCoverSong?: (song: Song) => void;
+    onUseUploadAsReference?: (track: { audio_url: string; filename: string }) => void;
+    onCoverUpload?: (track: { audio_url: string; filename: string }) => void;
 }
 
 // ... existing code ...
@@ -40,6 +42,38 @@ const FILTERS: { id: FilterType; label: string; icon: React.ReactNode }[] = [
     { id: 'private', label: 'Private', icon: <Lock size={16} /> },
     { id: 'generating', label: 'Generating', icon: <Loader2 size={16} /> },
 ];
+
+const createDragPreview = (element: HTMLElement) => {
+    const clone = element.cloneNode(true) as HTMLElement;
+    clone.style.width = `${element.offsetWidth}px`;
+    clone.style.position = 'fixed';
+    clone.style.top = '-1000px';
+    clone.style.left = '-1000px';
+    clone.style.pointerEvents = 'none';
+    clone.style.opacity = '0.95';
+
+    const badge = document.createElement('div');
+    badge.textContent = '+';
+    badge.style.position = 'absolute';
+    badge.style.left = '8px';
+    badge.style.bottom = '8px';
+    badge.style.width = '24px';
+    badge.style.height = '24px';
+    badge.style.display = 'flex';
+    badge.style.alignItems = 'center';
+    badge.style.justifyContent = 'center';
+    badge.style.borderRadius = '9999px';
+    badge.style.background = '#22c55e';
+    badge.style.color = 'white';
+    badge.style.boxShadow = '0 6px 16px rgba(0,0,0,0.25)';
+    badge.style.fontSize = '16px';
+    badge.style.lineHeight = '1';
+    clone.style.position = 'relative';
+    clone.appendChild(badge);
+
+    document.body.appendChild(clone);
+    return clone;
+};
 
 export const SongList: React.FC<SongListProps> = ({
     songs,
@@ -59,7 +93,9 @@ export const SongList: React.FC<SongListProps> = ({
     onDelete,
     onDeleteMany,
     onUseAsReference,
-    onCoverSong
+    onCoverSong,
+    onUseUploadAsReference,
+    onCoverUpload
 }) => {
     const { user } = useAuth();
     const [searchQuery, setSearchQuery] = useState('');
@@ -350,6 +386,8 @@ export const SongList: React.FC<SongListProps> = ({
                                             isPublic: false,
                                         } as Song);
                                     }}
+                                    onUseAsReference={() => onUseUploadAsReference?.(item.track)}
+                                    onCoverSong={() => onCoverUpload?.(item.track)}
                                 />
                             )
                         ))
@@ -422,6 +460,18 @@ const SongItem: React.FC<SongItemProps> = ({
                     title: song.title || 'Untitled',
                     source: 'song',
                 }));
+                const preview = createDragPreview(e.currentTarget);
+                const rect = e.currentTarget.getBoundingClientRect();
+                const offsetX = Math.max(0, Math.min(rect.width, e.clientX - rect.left));
+                const offsetY = Math.max(0, Math.min(rect.height, e.clientY - rect.top));
+                e.dataTransfer.setDragImage(preview, offsetX, offsetY);
+                setTimeout(() => {
+                    try {
+                        preview.remove();
+                    } catch {
+                        // ignore
+                    }
+                }, 0);
             }}
             className={`group flex items-center gap-4 p-2 rounded-lg hover:bg-zinc-100 dark:hover:bg-[#18181b] transition-all cursor-pointer border ${isSelected ? 'bg-zinc-100 dark:bg-[#18181b] border-zinc-200 dark:border-white/10' : 'border-transparent bg-transparent'} ${song.audioUrl && !song.isGenerating ? 'cursor-grab active:cursor-grabbing' : ''}`}
         >
@@ -617,7 +667,7 @@ const SongItem: React.FC<SongItemProps> = ({
                                 onClose={() => setShowDropdown(false)}
                                 isOwner={isOwner}
                                 onCreateVideo={() => onOpenVideo?.(song)}
-                                onReusePrompt={() => onReusePrompt?.(song)}
+                                onReusePrompt={onReusePrompt ? () => onReusePrompt?.(song) : undefined}
                                 onAddToPlaylist={() => onAddToPlaylist?.(song)}
                                 onDelete={() => onDelete?.(song)}
                                 onShare={() => setShareModalOpen(true)}
@@ -651,50 +701,46 @@ const SongItem: React.FC<SongItemProps> = ({
 const UploadItem: React.FC<{
     track: { id: string; filename: string; audio_url: string; duration?: number | null };
     onPlay: (audioUrl: string, title: string) => void;
-}> = ({ track, onPlay }) => {
+    onUseAsReference?: () => void;
+    onCoverSong?: () => void;
+}> = ({ track, onPlay, onUseAsReference, onCoverSong }) => {
     const title = track.filename.replace(/\.[^/.]+$/, '');
     const duration = track.duration
         ? `${Math.floor(track.duration / 60)}:${String(Math.floor(track.duration % 60)).padStart(2, '0')}`
         : '--:--';
-
     return (
-        <div
-            className="group flex items-center gap-4 p-2 rounded-lg hover:bg-zinc-100 dark:hover:bg-[#18181b] transition-all cursor-grab active:cursor-grabbing border border-transparent"
-            draggable
-            onDragStart={(e) => {
-                e.dataTransfer.effectAllowed = 'copy';
-                e.dataTransfer.setData('application/x-ace-audio', JSON.stringify({
-                    url: track.audio_url,
-                    title,
-                    source: 'upload',
-                }));
-            }}
-        >
-            <div className="relative w-16 h-16 flex-shrink-0 rounded-md bg-zinc-200 dark:bg-zinc-800 overflow-hidden shadow-sm">
-                <AlbumCover seed={track.id || title} size="full" className="w-full h-full opacity-40" />
-                <div
-                    className="absolute inset-0 bg-black/40 flex items-center justify-center cursor-pointer transition-opacity"
-                    onClick={(e) => {
-                        e.stopPropagation();
-                        onPlay(track.audio_url, title);
-                    }}
-                >
-                    <div className="w-9 h-9 rounded-full bg-white flex items-center justify-center shadow-lg">
-                        <Play fill="black" className="text-black ml-0.5 w-4 h-4" />
-                    </div>
-                </div>
-            </div>
-
-            <div className="flex-1 min-w-0">
-                <div className="text-sm font-bold text-zinc-900 dark:text-white truncate">
-                    {title}
-                </div>
-                <div className="text-[11px] text-zinc-400 mt-1">Upload</div>
-            </div>
-
-            <div className="text-xs font-mono text-zinc-500 dark:text-zinc-600 self-start pt-1">
-                {duration}
-            </div>
-        </div>
+        <SongItem
+            song={{
+                id: `upload_${track.id}`,
+                title,
+                lyrics: '',
+                style: 'Upload',
+                coverUrl: '',
+                duration,
+                createdAt: new Date(),
+                tags: [],
+                audioUrl: track.audio_url,
+                isPublic: false,
+            } as Song}
+            isCurrent={false}
+            isSelected={false}
+            isSelectionMode={false}
+            isChecked={false}
+            isLiked={false}
+            isPlaying={false}
+            isOwner={false}
+            onPlay={() => onPlay(track.audio_url, title)}
+            onSelect={() => onPlay(track.audio_url, title)}
+            onToggleSelect={() => undefined}
+            onToggleLike={() => undefined}
+            onAddToPlaylist={() => undefined}
+            onOpenVideo={() => undefined}
+            onShowDetails={() => undefined}
+            onNavigateToProfile={() => undefined}
+            onReusePrompt={undefined}
+            onDelete={() => undefined}
+            onUseAsReference={onUseAsReference}
+            onCoverSong={onCoverSong}
+        />
     );
 };
