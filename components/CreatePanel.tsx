@@ -135,8 +135,14 @@ export const CreatePanel: React.FC<CreatePanelProps> = ({
   // Advanced Settings
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [duration, setDuration] = useState(-1);
-  const [batchSize, setBatchSize] = useState(2);
-  const [bulkCount, setBulkCount] = useState(1); // Number of independent generation jobs to queue
+  const [batchSize, setBatchSize] = useState(() => {
+    const stored = localStorage.getItem('ace-batchSize');
+    return stored ? Number(stored) : 1;
+  });
+  const [bulkCount, setBulkCount] = useState(() => {
+    const stored = localStorage.getItem('ace-bulkCount');
+    return stored ? Number(stored) : 1;
+  });
   const [guidanceScale, setGuidanceScale] = useState(9.0);
   const [randomSeed, setRandomSeed] = useState(true);
   const [seed, setSeed] = useState(-1);
@@ -1028,7 +1034,7 @@ export const CreatePanel: React.FC<CreatePanelProps> = ({
                   max="4"
                   step="1"
                   value={batchSize}
-                  onChange={(e) => setBatchSize(Number(e.target.value))}
+                  onChange={(e) => { const v = Number(e.target.value); setBatchSize(v); localStorage.setItem('ace-batchSize', String(v)); }}
                   className="w-full h-2 bg-zinc-200 dark:bg-zinc-700 rounded-lg appearance-none cursor-pointer accent-pink-500"
                 />
                 <p className="text-[10px] text-zinc-500">Number of song variations to generate</p>
@@ -1494,7 +1500,7 @@ export const CreatePanel: React.FC<CreatePanelProps> = ({
                 max="4"
                 step="1"
                 value={batchSize}
-                onChange={(e) => setBatchSize(Number(e.target.value))}
+                onChange={(e) => { const v = Number(e.target.value); setBatchSize(v); localStorage.setItem('ace-batchSize', String(v)); }}
                 className="w-full h-2 bg-zinc-200 dark:bg-zinc-700 rounded-lg appearance-none cursor-pointer accent-pink-500"
               />
               <p className="text-[10px] text-zinc-500">How many versions to create in one run</p>
@@ -1512,7 +1518,7 @@ export const CreatePanel: React.FC<CreatePanelProps> = ({
                 {[1, 2, 3, 5, 10].map((count) => (
                   <button
                     key={count}
-                    onClick={() => setBulkCount(count)}
+                    onClick={() => { setBulkCount(count); localStorage.setItem('ace-bulkCount', String(count)); }}
                     className={`flex-1 py-2 rounded-lg text-xs font-bold transition-all ${
                       bulkCount === count
                         ? 'bg-gradient-to-r from-orange-500 to-pink-600 text-white shadow-md'

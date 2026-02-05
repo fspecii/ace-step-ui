@@ -154,6 +154,20 @@
 
 ## ⚡ Quick Start
 
+### 🎯 Pinokio - 1-Click Install (Recommended for All Users!)
+
+The easiest way to get ACE-Step UI up and running on **any platform** — no terminal, no manual setup:
+
+<p align="center">
+  <a href="https://beta.pinokio.co/apps/github-com-cocktailpeanut-ace-step-ui-pinokio">
+    <img src="https://img.shields.io/badge/⚡_Install_with_Pinokio-One_Click-ff69b4?style=for-the-badge&labelColor=1a1a1a" alt="Install with Pinokio" height="50">
+  </a>
+</p>
+
+> **[Pinokio](https://pinokio.computer)** handles everything automatically: Python, Node.js, dependencies, model downloads, and launching. Just click install and start making music.
+
+---
+
 ### 🪟 Windows - One-Click Start (Easiest!)
 ```batch
 cd ace-step-ui
@@ -380,6 +394,16 @@ Full control over every parameter:
 | **BPM** | 60-200 beats per minute |
 | **Key** | Musical key (C major, A minor, etc.) |
 
+### Batch Size & Bulk Generation
+
+| Setting | Description |
+|---------|-------------|
+| **Batch Size** | Number of variations generated per job (1-4). Default is **1** for broad GPU compatibility. Higher values generate more variations but use more VRAM. **8GB GPU users should keep this at 1.** |
+| **Bulk Generate** | Queue multiple independent generation jobs (1-10). Each job runs sequentially, so this is safe for any GPU. |
+| **LM Backend** | Choose between **PT** (~1.6 GB VRAM) and **VLLM** (~9.2 GB VRAM). PT is the default and works on most GPUs. |
+
+> **Tip:** Both batch size and bulk count are remembered in your browser — set them once and they stick for future sessions.
+
 ---
 
 ## 🔧 Built-in Tools
@@ -398,8 +422,8 @@ Full control over every parameter:
 | Issue | Solution |
 |-------|----------|
 | **ACE-Step API not reachable** | Ensure API server is running (see Usage section) |
-| **CUDA out of memory** | Close other GPU apps, reduce duration, or disable Thinking Mode |
-| **4GB GPU - Out of memory** | Make sure **Thinking Mode is OFF** (it's off by default). LLM features require 12GB+ |
+| **CUDA out of memory** | Switch LM Backend to **PT**, set batch size to **1**, reduce duration, or disable Thinking Mode |
+| **4GB GPU - Out of memory** | Use **PT** backend (default), batch size **1**, and keep **Thinking Mode OFF**. LLM features require 12GB+ |
 | **AttributeError: 'NoneType'** | Update to latest ACE-Step-1.5 (fix merged in PR #109) |
 | **Songs show 0:00 duration** | Install FFmpeg: `sudo apt install ffmpeg` (Linux) or download from [ffmpeg.org](https://ffmpeg.org) (Windows) |
 | **LAN access not working** | Check firewall allows ports 3000 and 3001 |
