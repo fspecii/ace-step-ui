@@ -36,6 +36,7 @@ def get_handlers(model: str = None):
     if _handler is None or _current_model != model:
         _handler = AceStepHandler()
         _handler.initialize_service(
+            use_flash_attention=True,
             project_root=ACESTEP_PATH,
             config_path=model,
             device="cuda",

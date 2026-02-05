@@ -12,7 +12,7 @@ export async function runCleanupJob(): Promise<CleanupResult> {
   const result = await pool.query(
     `SELECT af.id, af.song_id, af.storage_key, af.storage_provider
      FROM audio_files af
-     WHERE af.expires_at < NOW()
+     WHERE af.expires_at < datetime('now')
        AND af.deleted_at IS NULL`
   );
 
@@ -57,7 +57,7 @@ export async function cleanupDeletedSongs(): Promise<number> {
   const result = await pool.query(
     `DELETE FROM songs
      WHERE audio_url IS NULL
-       AND created_at < NOW() - INTERVAL '7 days'
+       AND created_at < datetime('now', '-7 days')
      RETURNING id`
   );
 

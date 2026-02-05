@@ -5,6 +5,7 @@ import { useAuth } from '../context/AuthContext';
 import { useI18n } from '../context/I18nContext';
 import { generateApi } from '../services/api';
 import { MAIN_STYLES, SUB_STYLES } from '../data/genres';
+import { EditableSlider } from './EditableSlider';
 
 interface ReferenceTrack {
   id: string;
@@ -158,10 +159,19 @@ export const CreatePanel: React.FC<CreatePanelProps> = ({ onGenerate, isGenerati
   const [completeTrackClasses, setCompleteTrackClasses] = useState('');
   const [isFormatCaption, setIsFormatCaption] = useState(false);
 
+  // LoRA Parameters
+  const [showLoraPanel, setShowLoraPanel] = useState(false);
+  const [loraPath, setLoraPath] = useState('./lora_output/final/adapter');
+  const [loraLoaded, setLoraLoaded] = useState(false);
+  const [loraScale, setLoraScale] = useState(1.0);
+  const [loraError, setLoraError] = useState<string | null>(null);
+  const [isLoraLoading, setIsLoraLoading] = useState(false);
+
   // Model selection
   const [selectedModel, setSelectedModel] = useState<string>('acestep-v15-sft');
   const [showModelMenu, setShowModelMenu] = useState(false);
   const modelMenuRef = useRef<HTMLDivElement>(null);
+  const previousModelRef = useRef<string>(selectedModel);
   
   // Available models (fixed list from checkpoints directory)
   const availableModels = useMemo(() => [
@@ -263,6 +273,83 @@ export const CreatePanel: React.FC<CreatePanelProps> = ({ onGenerate, isGenerati
       return () => document.removeEventListener('mousedown', handleClickOutside);
     }
   }, [showModelMenu]);
+
+  // Auto-unload LoRA when model changes
+  useEffect(() => {
+    if (previousModelRef.current !== selectedModel && loraLoaded) {
+      void handleLoraUnload();
+    }
+    previousModelRef.current = selectedModel;
+  }, [selectedModel, loraLoaded]);
+
+  // Auto-disable thinking when LoRA is loaded
+  useEffect(() => {
+    if (loraLoaded && thinking) {
+      setThinking(false);
+    }
+  }, [loraLoaded]);
+
+  // LoRA API handlers
+  const handleLoraToggle = async () => {
+    if (!token) {
+      setLoraError('Please sign in to use LoRA');
+      return;
+    }
+    if (!loraPath.trim()) {
+      setLoraError('Please enter a LoRA path');
+      return;
+    }
+
+    setIsLoraLoading(true);
+    setLoraError(null);
+
+    try {
+      if (loraLoaded) {
+        await handleLoraUnload();
+      } else {
+        const result = await generateApi.loadLora({ lora_path: loraPath }, token);
+        setLoraLoaded(true);
+        console.log('LoRA loaded:', result.message);
+      }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'LoRA operation failed';
+      setLoraError(message);
+      console.error('LoRA error:', err);
+    } finally {
+      setIsLoraLoading(false);
+    }
+  };
+
+  const handleLoraUnload = async () => {
+    if (!token) return;
+    
+    setIsLoraLoading(true);
+    setLoraError(null);
+
+    try {
+      const result = await generateApi.unloadLora(token);
+      setLoraLoaded(false);
+      console.log('LoRA unloaded:', result.message);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Failed to unload LoRA';
+      setLoraError(message);
+      console.error('Unload error:', err);
+    } finally {
+      setIsLoraLoading(false);
+    }
+  };
+
+  const handleLoraScaleChange = async (newScale: number) => {
+    setLoraScale(newScale);
+    
+    if (!token || !loraLoaded) return;
+
+    try {
+      await generateApi.setLoraScale({ scale: newScale }, token);
+    } catch (err) {
+      console.error('Failed to set LoRA scale:', err);
+    }
+  };
 
   // Reuse Effect - must be after all state declarations
   useEffect(() => {
@@ -570,7 +657,7 @@ export const CreatePanel: React.FC<CreatePanelProps> = ({ onGenerate, isGenerati
         lyrics,
         style,
         title: bulkCount > 1 ? `${title} (${i + 1})` : title,
-        model: selectedModel || undefined,
+        ditModel: selectedModel,
         instrumental,
         vocalLanguage,
         bpm,
@@ -622,6 +709,7 @@ export const CreatePanel: React.FC<CreatePanelProps> = ({ onGenerate, isGenerati
           return parsed.length ? parsed : undefined;
         })(),
         isFormatCaption,
+        loraLoaded,
       });
     }
 
@@ -713,7 +801,7 @@ export const CreatePanel: React.FC<CreatePanelProps> = ({ onGenerate, isGenerati
                           setSelectedModel(model.id);
                           // Auto-adjust parameters for non-turbo models
                           if (!isTurboModel(model.id)) {
-                            setInferenceSteps(50);
+                            setInferenceSteps(20);
                             setUseAdg(true);
                           }
                           setShowModelMenu(false);
@@ -784,42 +872,28 @@ export const CreatePanel: React.FC<CreatePanelProps> = ({ onGenerate, isGenerati
               </h3>
 
               {/* Duration */}
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <label className="text-xs font-medium text-zinc-600 dark:text-zinc-400">{t('duration')}</label>
-                  <span className="text-xs font-mono text-zinc-900 dark:text-white bg-zinc-100 dark:bg-black/20 px-2 py-0.5 rounded">
-                    {duration === -1 ? t('auto') : `${duration}${t('seconds')}`}
-                  </span>
-                </div>
-                <input
-                  type="range"
-                  min="-1"
-                  max="600"
-                  step="5"
-                  value={duration}
-                  onChange={(e) => setDuration(Number(e.target.value))}
-                  className="w-full h-2 bg-zinc-200 dark:bg-zinc-700 rounded-lg appearance-none cursor-pointer accent-pink-500"
-                />
-              </div>
+              <EditableSlider
+                label={t('duration')}
+                value={duration}
+                min={-1}
+                max={600}
+                step={5}
+                onChange={setDuration}
+                formatDisplay={(val) => val === -1 ? t('auto') : `${val}${t('seconds')}`}
+                autoLabel={t('auto')}
+              />
 
               {/* BPM */}
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <label className="text-xs font-medium text-zinc-600 dark:text-zinc-400">BPM</label>
-                  <span className="text-xs font-mono text-zinc-900 dark:text-white bg-zinc-100 dark:bg-black/20 px-2 py-0.5 rounded">
-                    {bpm === 0 ? 'Auto' : bpm}
-                  </span>
-                </div>
-                <input
-                  type="range"
-                  min="0"
-                  max="300"
-                  step="5"
-                  value={bpm}
-                  onChange={(e) => setBpm(Number(e.target.value))}
-                  className="w-full h-2 bg-zinc-200 dark:bg-zinc-700 rounded-lg appearance-none cursor-pointer accent-pink-500"
-                />
-              </div>
+              <EditableSlider
+                label="BPM"
+                value={bpm}
+                min={0}
+                max={300}
+                step={5}
+                onChange={setBpm}
+                formatDisplay={(val) => val === 0 ? 'Auto' : val.toString()}
+                autoLabel="Auto"
+              />
 
               {/* Key & Time Signature */}
               <div className="grid grid-cols-2 gap-3">
@@ -852,11 +926,15 @@ export const CreatePanel: React.FC<CreatePanelProps> = ({ onGenerate, isGenerati
               </div>
 
               {/* Variations */}
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <label className="text-xs font-medium text-zinc-600 dark:text-zinc-400">{t('variations')}</label>
-                  <span className="text-xs font-mono text-zinc-900 dark:text-white bg-zinc-100 dark:bg-black/20 px-2 py-0.5 rounded">{batchSize}</span>
-                </div>
+              <EditableSlider
+                label={t('variations')}
+                value={batchSize}
+                min={1}
+                max={8}
+                step={1}
+                onChange={setBatchSize}
+              />
+              <div style={{display: 'none'}}>
                 <input
                   type="range"
                   min="1"
@@ -1276,6 +1354,84 @@ export const CreatePanel: React.FC<CreatePanelProps> = ({ onGenerate, isGenerati
           )}
         </div>
 
+        {/* LORA CONTROL PANEL */}
+        {customMode && (
+          <>
+            <button
+              onClick={() => setShowLoraPanel(!showLoraPanel)}
+              className="w-full flex items-center justify-between px-4 py-3 bg-white dark:bg-suno-card rounded-xl border border-zinc-200 dark:border-white/5 text-sm font-medium text-zinc-700 dark:text-zinc-300 hover:bg-zinc-50 dark:hover:bg-white/5 transition-colors"
+            >
+              <div className="flex items-center gap-2">
+                <Sliders size={16} className="text-zinc-500" />
+                <span>LoRA</span>
+              </div>
+              <ChevronDown size={16} className={`text-zinc-500 transition-transform ${showLoraPanel ? 'rotate-180' : ''}`} />
+            </button>
+
+            {showLoraPanel && (
+              <div className="bg-white dark:bg-suno-card rounded-xl border border-zinc-200 dark:border-white/5 p-4 space-y-4">
+                {/* LoRA Path Input */}
+                <div className="space-y-2">
+                  <label className="text-xs font-medium text-zinc-600 dark:text-zinc-400">{t('loraPath')}</label>
+                  <input
+                    type="text"
+                    value={loraPath}
+                    onChange={(e) => setLoraPath(e.target.value)}
+                    placeholder={t('loraPathPlaceholder')}
+                    className="w-full bg-zinc-50 dark:bg-black/20 border border-zinc-200 dark:border-white/10 rounded-lg px-3 py-2 text-xs text-zinc-900 dark:text-white placeholder-zinc-400 dark:placeholder-zinc-600 focus:outline-none focus:border-pink-500 dark:focus:border-pink-500 transition-colors"
+                  />
+                </div>
+
+                {/* LoRA Load/Unload Toggle */}
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between py-2 border-t border-zinc-100 dark:border-white/5">
+                    <div className="flex items-center gap-2">
+                      <div className={`w-2 h-2 rounded-full ${
+                        loraLoaded ? 'bg-green-500 animate-pulse' : 'bg-red-500'
+                      }`}></div>
+                      <span className={`text-xs font-medium ${
+                        loraLoaded ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'
+                      }`}>
+                        {loraLoaded ? t('loraLoaded') : t('loraUnloaded')}
+                      </span>
+                    </div>
+                    <button
+                      onClick={handleLoraToggle}
+                      disabled={!loraPath.trim() || isLoraLoading}
+                      className={`px-4 py-2 rounded-lg text-xs font-semibold transition-all disabled:opacity-40 disabled:cursor-not-allowed ${
+                        loraLoaded
+                          ? 'bg-gradient-to-r from-green-500 to-emerald-600 text-white shadow-lg shadow-green-500/20 hover:from-green-600 hover:to-emerald-700'
+                          : 'bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 hover:bg-zinc-200 dark:hover:bg-zinc-700'
+                      }`}
+                    >
+                      {isLoraLoading ? '...' : (loraLoaded ? t('loraUnload') : t('loraLoad'))}
+                    </button>
+                  </div>
+                  {loraError && (
+                    <div className="text-xs text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/20 px-2 py-1 rounded">
+                      {loraError}
+                    </div>
+                  )}
+                </div>
+
+                {/* LoRA Scale Slider */}
+                <div className={!loraLoaded ? 'opacity-40 pointer-events-none' : ''}>
+                  <EditableSlider
+                    label={t('loraScale')}
+                    value={loraScale}
+                    min={0}
+                    max={2}
+                    step={0.05}
+                    onChange={handleLoraScaleChange}
+                    formatDisplay={(val) => val.toFixed(2)}
+                    helpText={t('loraScaleDescription')}
+                  />
+                </div>
+              </div>
+            )}
+          </>
+        )}
+
         {/* MUSIC PARAMETERS */}
         <div className="bg-white dark:bg-suno-card rounded-xl border border-zinc-200 dark:border-white/5 p-4 space-y-4">
           <h3 className="text-xs font-bold text-zinc-500 dark:text-zinc-400 uppercase tracking-wide flex items-center gap-2">
@@ -1284,27 +1440,16 @@ export const CreatePanel: React.FC<CreatePanelProps> = ({ onGenerate, isGenerati
           </h3>
 
           {/* BPM */}
-          <div className="space-y-2">
-            <div className="flex items-center justify-between">
-              <label className="text-xs font-medium text-zinc-600 dark:text-zinc-400">{t('bpm')}</label>
-              <span className="text-xs font-mono text-zinc-900 dark:text-white bg-zinc-100 dark:bg-black/20 px-2 py-0.5 rounded">
-                {bpm === 0 ? t('auto') : bpm}
-              </span>
-            </div>
-            <input
-              type="range"
-              min="0"
-              max="300"
-              step="5"
-              value={bpm}
-              onChange={(e) => setBpm(Number(e.target.value))}
-              className="w-full h-2 bg-zinc-200 dark:bg-zinc-700 rounded-lg appearance-none cursor-pointer accent-pink-500"
-            />
-            <div className="flex justify-between text-[10px] text-zinc-500">
-              <span>{t('auto')}</span>
-              <span>300</span>
-            </div>
-          </div>
+          <EditableSlider
+            label={t('bpm')}
+            value={bpm}
+            min={0}
+            max={300}
+            step={5}
+            onChange={setBpm}
+            formatDisplay={(val) => val === 0 ? t('auto') : val.toString()}
+            autoLabel={t('auto')}
+          />
 
           {/* Key & Time Signature */}
           <div className="grid grid-cols-2 gap-3">
@@ -1353,45 +1498,28 @@ export const CreatePanel: React.FC<CreatePanelProps> = ({ onGenerate, isGenerati
           <div className="bg-white dark:bg-suno-card rounded-xl border border-zinc-200 dark:border-white/5 p-4 space-y-4">
 
             {/* Duration */}
-            <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <label className="text-xs font-medium text-zinc-600 dark:text-zinc-400">{t('duration')}</label>
-                <span className="text-xs font-mono text-zinc-900 dark:text-white bg-zinc-100 dark:bg-black/20 px-2 py-0.5 rounded">
-                  {duration === -1 ? t('auto') : `${duration}${t('seconds')}`}
-                </span>
-              </div>
-              <input
-                type="range"
-                min="-1"
-                max="600"
-                step="5"
-                value={duration}
-                onChange={(e) => setDuration(Number(e.target.value))}
-                className="w-full h-2 bg-zinc-200 dark:bg-zinc-700 rounded-lg appearance-none cursor-pointer accent-pink-500"
-              />
-              <div className="flex justify-between text-[10px] text-zinc-500">
-                <span>{t('auto')}</span>
-                <span>10 {t('min')}</span>
-              </div>
-            </div>
+            <EditableSlider
+              label={t('duration')}
+              value={duration}
+              min={-1}
+              max={600}
+              step={5}
+              onChange={setDuration}
+              formatDisplay={(val) => val === -1 ? t('auto') : `${val}${t('seconds')}`}
+              autoLabel={t('auto')}
+              helpText={`${t('auto')} - 10 ${t('min')}`}
+            />
 
             {/* Batch Size */}
-            <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <label className="text-xs font-medium text-zinc-600 dark:text-zinc-400">{t('batchSize')}</label>
-                <span className="text-xs font-mono text-zinc-900 dark:text-white bg-zinc-100 dark:bg-black/20 px-2 py-0.5 rounded">{batchSize}</span>
-              </div>
-              <input
-                type="range"
-                min="1"
-                max="8"
-                step="1"
-                value={batchSize}
-                onChange={(e) => setBatchSize(Number(e.target.value))}
-                className="w-full h-2 bg-zinc-200 dark:bg-zinc-700 rounded-lg appearance-none cursor-pointer accent-pink-500"
-              />
-              <p className="text-[10px] text-zinc-500">{t('numberOfVariations')}</p>
-            </div>
+            <EditableSlider
+              label={t('batchSize')}
+              value={batchSize}
+              min={1}
+              max={8}
+              step={1}
+              onChange={setBatchSize}
+              helpText={t('numberOfVariations')}
+            />
 
             {/* Bulk Generate */}
             <div className="space-y-2">
@@ -1420,40 +1548,27 @@ export const CreatePanel: React.FC<CreatePanelProps> = ({ onGenerate, isGenerati
             </div>
 
             {/* Inference Steps */}
-            <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <label className="text-xs font-medium text-zinc-600 dark:text-zinc-400">{t('inferenceSteps')}</label>
-                <span className="text-xs font-mono text-zinc-900 dark:text-white bg-zinc-100 dark:bg-black/20 px-2 py-0.5 rounded">{inferenceSteps}</span>
-              </div>
-              <input
-                type="range"
-                min="4"
-                max="200"
-                step="1"
-                value={inferenceSteps}
-                onChange={(e) => setInferenceSteps(Number(e.target.value))}
-                className="w-full h-2 bg-zinc-200 dark:bg-zinc-700 rounded-lg appearance-none cursor-pointer accent-pink-500"
-              />
-              <p className="text-[10px] text-zinc-500">{t('moreStepsBetterQuality')}</p>
-            </div>
+            <EditableSlider
+              label={t('inferenceSteps')}
+              value={inferenceSteps}
+              min={4}
+              max={200}
+              step={1}
+              onChange={setInferenceSteps}
+              helpText={t('moreStepsBetterQuality')}
+            />
 
             {/* Guidance Scale */}
-            <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <label className="text-xs font-medium text-zinc-600 dark:text-zinc-400">{t('guidanceScale')}</label>
-                <span className="text-xs font-mono text-zinc-900 dark:text-white bg-zinc-100 dark:bg-black/20 px-2 py-0.5 rounded">{guidanceScale.toFixed(1)}</span>
-              </div>
-              <input
-                type="range"
-                min="1"
-                max="15"
-                step="0.5"
-                value={guidanceScale}
-                onChange={(e) => setGuidanceScale(Number(e.target.value))}
-                className="w-full h-2 bg-zinc-200 dark:bg-zinc-700 rounded-lg appearance-none cursor-pointer accent-pink-500"
-              />
-              <p className="text-[10px] text-zinc-500">{t('howCloselyFollowPrompt')}</p>
-            </div>
+            <EditableSlider
+              label={t('guidanceScale')}
+              value={guidanceScale}
+              min={1}
+              max={15}
+              step={0.5}
+              onChange={setGuidanceScale}
+              formatDisplay={(val) => val.toFixed(1)}
+              helpText={t('howCloselyFollowPrompt')}
+            />
 
             {/* Audio Format & Inference Method */}
             <div className="grid grid-cols-2 gap-3">
@@ -1511,32 +1626,27 @@ export const CreatePanel: React.FC<CreatePanelProps> = ({ onGenerate, isGenerati
 
             {/* Thinking Toggle */}
             <div className="flex items-center justify-between py-2 border-t border-zinc-100 dark:border-white/5">
-              <span className="text-xs font-medium text-zinc-600 dark:text-zinc-400">{t('thinkingCot')}</span>
+              <span className={`text-xs font-medium ${loraLoaded ? 'text-zinc-400 dark:text-zinc-600' : 'text-zinc-600 dark:text-zinc-400'}`}>{t('thinkingCot')}</span>
               <button
-                onClick={() => setThinking(!thinking)}
-                className={`w-10 h-5 rounded-full flex items-center transition-colors duration-200 px-0.5 border border-zinc-200 dark:border-white/5 ${thinking ? 'bg-pink-600' : 'bg-zinc-300 dark:bg-black/40'}`}
+                onClick={() => !loraLoaded && setThinking(!thinking)}
+                disabled={loraLoaded}
+                className={`w-10 h-5 rounded-full flex items-center transition-colors duration-200 px-0.5 border border-zinc-200 dark:border-white/5 ${thinking ? 'bg-pink-600' : 'bg-zinc-300 dark:bg-black/40'} ${loraLoaded ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
               >
                 <div className={`w-4 h-4 rounded-full bg-white transform transition-transform duration-200 shadow-sm ${thinking ? 'translate-x-5' : 'translate-x-0'}`} />
               </button>
             </div>
 
             {/* Shift */}
-            <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <label className="text-xs font-medium text-zinc-600 dark:text-zinc-400">{t('shift')}</label>
-                <span className="text-xs font-mono text-zinc-900 dark:text-white bg-zinc-100 dark:bg-black/20 px-2 py-0.5 rounded">{shift.toFixed(1)}</span>
-              </div>
-              <input
-                type="range"
-                min="1"
-                max="5"
-                step="0.1"
-                value={shift}
-                onChange={(e) => setShift(Number(e.target.value))}
-                className="w-full h-2 bg-zinc-200 dark:bg-zinc-700 rounded-lg appearance-none cursor-pointer accent-pink-500"
-              />
-              <p className="text-[10px] text-zinc-500">{t('timestepShiftForBase')}</p>
-            </div>
+            <EditableSlider
+              label={t('shift')}
+              value={shift}
+              min={1}
+              max={5}
+              step={0.1}
+              onChange={setShift}
+              formatDisplay={(val) => val.toFixed(1)}
+              helpText={t('timestepShiftForBase')}
+            />
 
             {/* Divider */}
             <div className="border-t border-zinc-200 dark:border-white/10 pt-4">
@@ -1565,73 +1675,48 @@ export const CreatePanel: React.FC<CreatePanelProps> = ({ onGenerate, isGenerati
             {showLmParams && (
               <div className="bg-white dark:bg-suno-card rounded-xl border border-zinc-200 dark:border-white/5 p-4 space-y-4">
                 {/* LM Temperature */}
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between">
-                    <label className="text-xs font-medium text-zinc-600 dark:text-zinc-400">{t('lmTemperature')}</label>
-                    <span className="text-xs font-mono text-zinc-900 dark:text-white bg-zinc-100 dark:bg-black/20 px-2 py-0.5 rounded">{lmTemperature.toFixed(2)}</span>
-                  </div>
-                  <input
-                    type="range"
-                    min="0"
-                    max="2"
-                    step="0.05"
-                    value={lmTemperature}
-                    onChange={(e) => setLmTemperature(Number(e.target.value))}
-                    className="w-full h-2 bg-zinc-200 dark:bg-zinc-700 rounded-lg appearance-none cursor-pointer accent-pink-500"
-                  />
-                  <p className="text-[10px] text-zinc-500">{t('higherMoreRandom')}</p>
-                </div>
+                <EditableSlider
+                  label={t('lmTemperature')}
+                  value={lmTemperature}
+                  min={0}
+                  max={2}
+                  step={0.05}
+                  onChange={setLmTemperature}
+                  formatDisplay={(val) => val.toFixed(2)}
+                  helpText={t('higherMoreRandom')}
+                />
 
                 {/* LM CFG Scale */}
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between">
-                    <label className="text-xs font-medium text-zinc-600 dark:text-zinc-400">{t('lmCfgScale')}</label>
-                    <span className="text-xs font-mono text-zinc-900 dark:text-white bg-zinc-100 dark:bg-black/20 px-2 py-0.5 rounded">{lmCfgScale.toFixed(1)}</span>
-                  </div>
-                  <input
-                    type="range"
-                    min="1"
-                    max="3"
-                    step="0.1"
-                    value={lmCfgScale}
-                    onChange={(e) => setLmCfgScale(Number(e.target.value))}
-                    className="w-full h-2 bg-zinc-200 dark:bg-zinc-700 rounded-lg appearance-none cursor-pointer accent-pink-500"
-                  />
-                  <p className="text-[10px] text-zinc-500">{t('noCfgScale')}</p>
-                </div>
+                <EditableSlider
+                  label={t('lmCfgScale')}
+                  value={lmCfgScale}
+                  min={1}
+                  max={3}
+                  step={0.1}
+                  onChange={setLmCfgScale}
+                  formatDisplay={(val) => val.toFixed(1)}
+                  helpText={t('noCfgScale')}
+                />
 
                 {/* LM Top-K & Top-P */}
                 <div className="grid grid-cols-2 gap-3">
-                  <div className="space-y-2">
-                    <div className="flex items-center justify-between">
-                      <label className="text-xs font-medium text-zinc-600 dark:text-zinc-400">{t('topK')}</label>
-                      <span className="text-xs font-mono text-zinc-900 dark:text-white bg-zinc-100 dark:bg-black/20 px-2 py-0.5 rounded">{lmTopK}</span>
-                    </div>
-                    <input
-                      type="range"
-                      min="0"
-                      max="100"
-                      step="1"
-                      value={lmTopK}
-                      onChange={(e) => setLmTopK(Number(e.target.value))}
-                      className="w-full h-2 bg-zinc-200 dark:bg-zinc-700 rounded-lg appearance-none cursor-pointer accent-pink-500"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <div className="flex items-center justify-between">
-                      <label className="text-xs font-medium text-zinc-600 dark:text-zinc-400">{t('topP')}</label>
-                      <span className="text-xs font-mono text-zinc-900 dark:text-white bg-zinc-100 dark:bg-black/20 px-2 py-0.5 rounded">{lmTopP.toFixed(2)}</span>
-                    </div>
-                    <input
-                      type="range"
-                      min="0"
-                      max="1"
-                      step="0.01"
-                      value={lmTopP}
-                      onChange={(e) => setLmTopP(Number(e.target.value))}
-                      className="w-full h-2 bg-zinc-200 dark:bg-zinc-700 rounded-lg appearance-none cursor-pointer accent-pink-500"
-                    />
-                  </div>
+                  <EditableSlider
+                    label={t('topK')}
+                    value={lmTopK}
+                    min={0}
+                    max={100}
+                    step={1}
+                    onChange={setLmTopK}
+                  />
+                  <EditableSlider
+                    label={t('topP')}
+                    value={lmTopP}
+                    min={0}
+                    max={1}
+                    step={0.01}
+                    onChange={setLmTopP}
+                    formatDisplay={(val) => val.toFixed(2)}
+                  />
                 </div>
 
                 {/* LM Negative Prompt */}
@@ -1867,12 +1952,12 @@ export const CreatePanel: React.FC<CreatePanelProps> = ({ onGenerate, isGenerati
               <div className="flex items-start justify-between">
                 <div>
                   <h3 className="text-xl font-semibold text-zinc-900 dark:text-white">
-                    {audioModalTarget === 'reference' ? 'Reference' : 'Cover'}
+                    {audioModalTarget === 'reference' ? t('referenceModalTitle') : t('coverModalTitle')}
                   </h3>
                   <p className="text-sm text-zinc-500 dark:text-zinc-400 mt-1">
                     {audioModalTarget === 'reference'
-                      ? 'Create songs inspired by a reference track'
-                      : 'Transform an existing track into a new version'}
+                      ? t('referenceModalDescription')
+                      : t('coverModalDescription')}
                   </p>
                 </div>
                 <button
@@ -1904,13 +1989,13 @@ export const CreatePanel: React.FC<CreatePanelProps> = ({ onGenerate, isGenerati
                 {isUploadingReference ? (
                   <>
                     <RefreshCw size={16} className="animate-spin" />
-                    Uploading...
+                    {t('uploadingAudio')}
                   </>
                 ) : (
                   <>
                     <Upload size={16} />
-                    Upload audio
-                    <span className="text-xs text-zinc-400 ml-1">MP3, WAV, FLAC</span>
+                    {t('uploadAudio')}
+                    <span className="text-xs text-zinc-400 ml-1">{t('audioFormats')}</span>
                   </>
                 )}
               </button>
@@ -1924,7 +2009,7 @@ export const CreatePanel: React.FC<CreatePanelProps> = ({ onGenerate, isGenerati
             <div className="border-t border-zinc-100 dark:border-white/5">
               <div className="px-5 py-3 flex items-center gap-2">
                 <span className="px-3 py-1 rounded-full bg-zinc-900 dark:bg-white text-white dark:text-zinc-900 text-xs font-semibold">
-                  Mine
+                  {t('mine')}
                 </span>
               </div>
 
@@ -1933,13 +2018,13 @@ export const CreatePanel: React.FC<CreatePanelProps> = ({ onGenerate, isGenerati
                 {isLoadingTracks ? (
                   <div className="px-5 py-8 text-center">
                     <RefreshCw size={20} className="animate-spin mx-auto text-zinc-400" />
-                    <p className="text-xs text-zinc-400 mt-2">Loading tracks...</p>
+                    <p className="text-xs text-zinc-400 mt-2">{t('loadingTracks')}</p>
                   </div>
                 ) : referenceTracks.length === 0 ? (
                   <div className="px-5 py-8 text-center">
                     <Music2 size={24} className="mx-auto text-zinc-300 dark:text-zinc-600" />
-                    <p className="text-sm text-zinc-400 mt-2">No tracks yet</p>
-                    <p className="text-xs text-zinc-400 mt-1">Upload audio files to use them as references</p>
+                    <p className="text-sm text-zinc-400 mt-2">{t('noTracksYet')}</p>
+                    <p className="text-xs text-zinc-400 mt-1">{t('uploadAudioFilesAsReferences')}</p>
                   </div>
                 ) : (
                   <div className="divide-y divide-zinc-100 dark:divide-white/5">

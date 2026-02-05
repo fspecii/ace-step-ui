@@ -6,6 +6,7 @@ import { useI18n } from '../context/I18nContext';
 import { SongDropdownMenu } from './SongDropdownMenu';
 import { ShareModal } from './ShareModal';
 import { AlbumCover } from './AlbumCover';
+import { songsApi } from '../services/api';
 
 interface SongListProps {
     songs: Song[];
@@ -22,6 +23,7 @@ interface SongListProps {
     onNavigateToProfile?: (username: string) => void;
     onReusePrompt?: (song: Song) => void;
     onDelete?: (song: Song) => void;
+    onSongUpdate?: (updatedSong: Song) => void;
 }
 
 // ... existing code ...
@@ -60,7 +62,8 @@ export const SongList: React.FC<SongListProps> = ({
     onShowDetails,
     onNavigateToProfile,
     onReusePrompt,
-    onDelete
+    onDelete,
+    onSongUpdate
 }) => {
     const { user } = useAuth();
     const { t } = useI18n();
@@ -229,6 +232,7 @@ export const SongList: React.FC<SongListProps> = ({
                                 onNavigateToProfile={onNavigateToProfile}
                                 onReusePrompt={() => onReusePrompt?.(song)}
                                 onDelete={() => onDelete?.(song)}
+                                onSongUpdate={onSongUpdate}
                             />
                         ))
                     )}
@@ -254,6 +258,7 @@ interface SongItemProps {
     onNavigateToProfile?: (username: string) => void;
     onReusePrompt?: () => void;
     onDelete?: () => void;
+    onSongUpdate?: (updatedSong: Song) => void;
 }
 
 const SongItem: React.FC<SongItemProps> = ({
@@ -271,11 +276,53 @@ const SongItem: React.FC<SongItemProps> = ({
     onShowDetails,
     onNavigateToProfile,
     onReusePrompt,
-    onDelete
+    onDelete,
+    onSongUpdate
 }) => {
+    const { token } = useAuth();
     const [showDropdown, setShowDropdown] = useState(false);
     const [shareModalOpen, setShareModalOpen] = useState(false);
     const [imageError, setImageError] = useState(false);
+    const [isEditingTitle, setIsEditingTitle] = useState(false);
+    const [editedTitle, setEditedTitle] = useState(song.title);
+    const titleInputRef = useRef<HTMLInputElement>(null);
+
+    useEffect(() => {
+        if (isEditingTitle && titleInputRef.current) {
+            titleInputRef.current.focus();
+            titleInputRef.current.select();
+        }
+    }, [isEditingTitle]);
+
+    const handleSaveTitle = async () => {
+        if (!token || !isOwner || !editedTitle.trim() || editedTitle === song.title) {
+            setIsEditingTitle(false);
+            setEditedTitle(song.title);
+            return;
+        }
+
+        try {
+            const response = await songsApi.updateSong(song.id, { title: editedTitle.trim() }, token);
+            setIsEditingTitle(false);
+            // 更新父组件的歌曲列表
+            if (onSongUpdate && response.song) {
+                onSongUpdate(response.song);
+            }
+        } catch (error) {
+            console.error('Failed to update title:', error);
+            setEditedTitle(song.title);
+            setIsEditingTitle(false);
+        }
+    };
+
+    const handleTitleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+        if (e.key === 'Enter') {
+            handleSaveTitle();
+        } else if (e.key === 'Escape') {
+            setEditedTitle(song.title);
+            setIsEditingTitle(false);
+        }
+    };
 
     return (
         <>
@@ -341,11 +388,32 @@ const SongItem: React.FC<SongItemProps> = ({
             <div className="flex-1 min-w-0 flex flex-col justify-between py-1">
                 <div className="space-y-1">
                     <div className="flex items-center gap-2">
-                        <h3 className={`font-bold text-lg truncate ${isCurrent ? 'text-pink-600 dark:text-pink-500' : 'text-zinc-900 dark:text-white'}`}>
-                            {song.title || (song.isGenerating ? (song.queuePosition ? "Queued..." : "Creating...") : "Untitled")}
-                        </h3>
-                        <span className="inline-flex items-center justify-center text-[9px] font-bold text-white bg-gradient-to-r from-pink-500 to-purple-500 px-1.5 py-0.5 rounded-sm shadow-sm" title={`Raw model: ${song.model || 'undefined'}`}>
-                            {getModelDisplayName(song.model)}
+                        {isEditingTitle && isOwner ? (
+                            <input
+                                ref={titleInputRef}
+                                type="text"
+                                value={editedTitle}
+                                onChange={(e) => setEditedTitle(e.target.value)}
+                                onBlur={handleSaveTitle}
+                                onKeyDown={handleTitleKeyDown}
+                                onClick={(e) => e.stopPropagation()}
+                                className="font-bold text-lg bg-zinc-100 dark:bg-zinc-800 px-2 py-0.5 rounded border border-pink-500 focus:outline-none text-zinc-900 dark:text-white min-w-0 flex-1"
+                            />
+                        ) : (
+                            <h3
+                                className={`font-bold text-lg truncate ${isCurrent ? 'text-pink-600 dark:text-pink-500' : 'text-zinc-900 dark:text-white'} ${isOwner && !song.isGenerating ? 'cursor-pointer hover:underline' : ''}`}
+                                onClick={(e) => {
+                                    if (isOwner && !song.isGenerating) {
+                                        e.stopPropagation();
+                                        setIsEditingTitle(true);
+                                    }
+                                }}
+                            >
+                                {song.title || (song.isGenerating ? (song.queuePosition ? "Queued..." : "Creating...") : "Untitled")}
+                            </h3>
+                        )}
+                        <span className="inline-flex items-center justify-center text-[9px] font-bold text-white bg-gradient-to-r from-pink-500 to-purple-500 px-1.5 py-0.5 rounded-sm shadow-sm" title={`DiT model: ${song.ditModel || 'undefined'}`}>
+                            {getModelDisplayName(song.ditModel)}
                         </span>
                         {song.isPublic === false && (
                             <Lock size={12} className="text-zinc-400 dark:text-zinc-500" />

@@ -19,6 +19,9 @@ interface PlayerProps {
     onPrevious: () => void;
     volume: number;
     onVolumeChange: (val: number) => void;
+    playbackRate: number;
+    onPlaybackRateChange: (rate: number) => void;
+    audioRef: React.RefObject<HTMLAudioElement>;
     isShuffle: boolean;
     onToggleShuffle: () => void;
     repeatMode: 'none' | 'all' | 'one';
@@ -43,6 +46,9 @@ export const Player: React.FC<PlayerProps> = ({
     onPrevious,
     volume,
     onVolumeChange,
+    playbackRate,
+    onPlaybackRateChange,
+    audioRef,
     isShuffle,
     onToggleShuffle,
     repeatMode,
@@ -64,6 +70,8 @@ export const Player: React.FC<PlayerProps> = ({
     const [showDropdown, setShowDropdown] = useState(false);
     const [isFullscreen, setIsFullscreen] = useState(false);
     const [shareModalOpen, setShareModalOpen] = useState(false);
+    const [showSpeedMenu, setShowSpeedMenu] = useState(false);
+    const speedMenuRef = useRef<HTMLDivElement>(null);
 
     // Close fullscreen on Escape key
     useEffect(() => {
@@ -76,6 +84,17 @@ export const Player: React.FC<PlayerProps> = ({
         window.addEventListener('keydown', handleKeyDown);
         return () => window.removeEventListener('keydown', handleKeyDown);
     }, [isFullscreen]);
+
+    // Close speed menu when clicking outside
+    useEffect(() => {
+        const handleClickOutside = (event: MouseEvent) => {
+            if (speedMenuRef.current && !speedMenuRef.current.contains(event.target as Node)) {
+                setShowSpeedMenu(false);
+            }
+        };
+        document.addEventListener('mousedown', handleClickOutside);
+        return () => document.removeEventListener('mousedown', handleClickOutside);
+    }, []);
 
     if (!currentSong) return null;
 
@@ -226,15 +245,9 @@ export const Player: React.FC<PlayerProps> = ({
                         </button>
                     </div>
 
-                    {/* Volume Control */}
-                    <div className="flex items-center gap-3 px-6 py-4">
-                        <button
-                            onClick={() => onVolumeChange(volume === 0 ? 0.8 : 0)}
-                            className="text-zinc-400 dark:text-white/50 tap-highlight-none"
-                        >
-                            {volume === 0 ? <VolumeX size={20} /> : <Volume2 size={20} />}
-                        </button>
-                        <div className="flex-1 h-1 bg-zinc-300 dark:bg-white/20 rounded-full relative">
+                    {/* Volume Control - Vertical */}
+                    <div className="flex flex-col items-center gap-3 px-6 py-4">
+                        <div className="relative h-32 w-8 flex items-center justify-center">
                             <input
                                 type="range"
                                 min="0"
@@ -242,13 +255,19 @@ export const Player: React.FC<PlayerProps> = ({
                                 step="0.01"
                                 value={volume}
                                 onChange={(e) => onVolumeChange(parseFloat(e.target.value))}
-                                className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
-                            />
-                            <div
-                                className="h-full bg-zinc-700 dark:bg-white/70 rounded-full"
-                                style={{ width: `${volume * 100}%` }}
+                                className="w-32 h-8 -rotate-90 origin-center appearance-none bg-transparent cursor-pointer"
+                                style={{
+                                    WebkitAppearance: 'none',
+                                    background: `linear-gradient(to right, rgb(236 72 153) 0%, rgb(236 72 153) ${volume * 100}%, rgb(228 228 231) ${volume * 100}%, rgb(228 228 231) 100%)`
+                                }}
                             />
                         </div>
+                        <button
+                            onClick={() => onVolumeChange(volume === 0 ? 0.8 : 0)}
+                            className="text-zinc-400 dark:text-white/50 tap-highlight-none"
+                        >
+                            {volume === 0 ? <VolumeX size={20} /> : <Volume2 size={20} />}
+                        </button>
                     </div>
 
                     {/* Extra Actions */}
@@ -285,7 +304,7 @@ export const Player: React.FC<PlayerProps> = ({
                                 onCreateVideo={onOpenVideo}
                                 onReusePrompt={onReusePrompt}
                                 onAddToPlaylist={onAddToPlaylist}
-                                                                onDelete={onDelete}
+                                onDelete={onDelete}
                                 onShare={() => setShareModalOpen(true)}
                             />
                         </div>
@@ -474,6 +493,34 @@ export const Player: React.FC<PlayerProps> = ({
                                 </button>
                             </div>
 
+                            {/* Playback Speed Dropdown */}
+                            <div className="relative group hidden lg:block" ref={speedMenuRef}>
+                                <button
+                                    className="px-2 py-1 text-[11px] font-mono font-bold hover:bg-zinc-200 dark:hover:bg-white/10 rounded transition-colors min-w-[42px] text-center"
+                                    onClick={() => setShowSpeedMenu(!showSpeedMenu)}
+                                >
+                                    {playbackRate}x
+                                </button>
+                                {showSpeedMenu && (
+                                    <div className="absolute bottom-full right-0 mb-2 bg-white dark:bg-zinc-800 rounded-lg shadow-xl border border-zinc-200 dark:border-white/10 py-1 min-w-[80px] z-50">
+                                        {[0.25, 0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0].map((rate) => (
+                                            <button
+                                                key={rate}
+                                                onClick={() => {
+                                                    onPlaybackRateChange(rate);
+                                                    setShowSpeedMenu(false);
+                                                }}
+                                                className={`w-full px-3 py-1.5 text-left text-xs font-mono hover:bg-zinc-100 dark:hover:bg-white/10 transition-colors ${
+                                                    playbackRate === rate ? 'text-pink-600 dark:text-pink-500 font-bold' : 'text-zinc-700 dark:text-zinc-300'
+                                                }`}
+                                            >
+                                                {rate === 1.0 ? '正常' : `${rate}x`}
+                                            </button>
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
+
                             {/* Volume Control */}
                             <div className="flex items-center gap-4 w-full max-w-xs">
                                 <button
@@ -572,7 +619,7 @@ export const Player: React.FC<PlayerProps> = ({
                     className="h-full bg-zinc-900 dark:bg-white relative group-hover:bg-pink-600 dark:group-hover:bg-pink-500 transition-colors"
                     style={{ width: `${progressPercent}%` }}
                 >
-                    <div className="absolute right-0 top-1/2 -translate-y-1/2 w-3 h-3 bg-zinc-900 dark:bg-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity shadow-lg scale-150"></div>
+                    <div className="absolute right-0 top-1/2 -translate-y-1/2 w-3 h-3 bg-zinc-900 dark:bg-white group-hover:bg-pink-600 dark:group-hover:bg-pink-500 rounded-full shadow-lg -mr-2 opacity-0 group-hover:opacity-100 transition-opacity" />
                 </div>
                 {/* Hit area for easier clicking */}
                 <div className="absolute top-1/2 -translate-y-1/2 w-full h-4 -z-10"></div>
@@ -648,8 +695,37 @@ export const Player: React.FC<PlayerProps> = ({
                         {formatTime(currentTime)} / {formatTime(duration || 0)}
                     </span>
 
+                    {/* Playback Speed */}
+                    <div className="relative group hidden lg:block" ref={speedMenuRef}>
+                        <button
+                            className="px-2 py-1 text-[11px] font-mono font-bold hover:bg-zinc-200 dark:hover:bg-white/10 rounded transition-colors min-w-[42px] text-center"
+                            onClick={() => setShowSpeedMenu(!showSpeedMenu)}
+                        >
+                            {playbackRate}x
+                        </button>
+                        {showSpeedMenu && (
+                            <div className="absolute bottom-full right-0 mb-2 bg-white dark:bg-zinc-800 rounded-lg shadow-xl border border-zinc-200 dark:border-white/10 py-1 min-w-[80px] z-50">
+                                {[0.25, 0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0].map((rate) => (
+                                    <button
+                                        key={rate}
+                                        onClick={() => {
+                                            onPlaybackRateChange(rate);
+                                            setShowSpeedMenu(false);
+                                        }}
+                                        className={`w-full px-3 py-1.5 text-left text-xs font-mono hover:bg-zinc-100 dark:hover:bg-white/10 transition-colors ${
+                                            playbackRate === rate ? 'text-pink-600 dark:text-pink-500 font-bold' : 'text-zinc-700 dark:text-zinc-300'
+                                        }`}
+                                    >
+                                        {rate === 1.0 ? '正常' : `${rate}x`}
+                                    </button>
+                                ))}
+                            </div>
+                        )}
+                    </div>
+
+                    {/* Volume Control with Vertical Slider */}
                     <div
-                        className="items-center gap-2 relative group hidden md:flex"
+                        className="relative group hidden md:block"
                         onMouseEnter={() => setIsHoveringVolume(true)}
                         onMouseLeave={() => setIsHoveringVolume(false)}
                     >
@@ -660,22 +736,31 @@ export const Player: React.FC<PlayerProps> = ({
                             {volume === 0 ? <VolumeX size={18} /> : <Volume2 size={18} />}
                         </button>
 
-                        {/* Volume Slider */}
-                        <div className={`h-1.5 bg-zinc-200 dark:bg-zinc-700 rounded-full cursor-pointer overflow-hidden transition-all duration-200 ${isHoveringVolume ? 'opacity-100 w-16 lg:w-24 mx-1 lg:mx-2' : 'opacity-0 w-0 mx-0 pointer-events-none'}`}>
-                            <input
-                                type="range"
-                                min="0"
-                                max="1"
-                                step="0.01"
-                                value={volume}
-                                onChange={(e) => onVolumeChange(parseFloat(e.target.value))}
-                                className="w-full h-full opacity-0 cursor-pointer absolute z-10"
-                            />
-                            <div
-                                className="h-full bg-zinc-900 dark:bg-white rounded-full"
-                                style={{ width: `${volume * 100}%` }}
-                            ></div>
-                        </div>
+                        {/* Vertical Volume Slider */}
+                        {isHoveringVolume && (
+                            <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 pb-2">
+                                <div className="bg-white dark:bg-zinc-800 rounded-lg shadow-xl border border-zinc-200 dark:border-white/10 p-2">
+                                    <div className="relative h-24 w-8 flex items-center justify-center">
+                                        <input
+                                            type="range"
+                                            min="0"
+                                            max="1"
+                                            step="0.01"
+                                            value={volume}
+                                            onChange={(e) => onVolumeChange(parseFloat(e.target.value))}
+                                            className="w-24 h-8 -rotate-90 origin-center appearance-none bg-transparent cursor-pointer"
+                                            style={{
+                                                WebkitAppearance: 'none',
+                                                background: `linear-gradient(to right, rgb(236 72 153) 0%, rgb(236 72 153) ${volume * 100}%, rgb(228 228 231) ${volume * 100}%, rgb(228 228 231) 100%)`
+                                            }}
+                                        />
+                                    </div>
+                                    <div className="text-[10px] text-center font-mono text-zinc-600 dark:text-zinc-400 mt-1">
+                                        {Math.round(volume * 100)}%
+                                    </div>
+                                </div>
+                            </div>
+                        )}
                     </div>
 
                     <button

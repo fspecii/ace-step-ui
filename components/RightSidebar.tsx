@@ -17,7 +17,7 @@ interface RightSidebarProps {
     onNavigateToProfile?: (username: string) => void;
     onNavigateToSong?: (songId: string) => void;
     isLiked?: boolean;
-    onToggleLike?: (song: Song) => void;
+    onToggleLike?: (songId: string) => void;
     onDelete?: (song: Song) => void;
     onAddToPlaylist?: (song: Song) => void;
 }
@@ -187,7 +187,7 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({ song, onClose, onOpe
                                 icon={<Heart size={22} fill={isLiked ? 'currentColor' : 'none'} />}
                                 label={String(song.likeCount || 0)}
                                 active={isLiked}
-                                onClick={() => onToggleLike?.(song)}
+                                onClick={() => onToggleLike?.(song.id)}
                             />
                             <ActionButton icon={<Share2 size={22} />} onClick={() => setShareModalOpen(true)} />
                         </div>
@@ -270,14 +270,19 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({ song, onClose, onOpe
                         <div className="px-4 py-3 border-b border-zinc-100 dark:border-white/5 flex items-center justify-between bg-zinc-50 dark:bg-white/5">
                             <h3 className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider mb-2 flex items-center justify-between">{t('lyricsSection')}</h3>
                             <button
-                                onClick={() => {
-                                    if (song.lyrics) {
-                                        navigator.clipboard.writeText(song.lyrics);
-                                        setCopiedLyrics(true);
-                                        setTimeout(() => setCopiedLyrics(false), 2000);
+                                onClick={async (e) => {
+                                    e.stopPropagation();
+                                    try {
+                                        if (song.lyrics) {
+                                            await navigator.clipboard.writeText(song.lyrics);
+                                            setCopiedLyrics(true);
+                                            setTimeout(() => setCopiedLyrics(false), 2000);
+                                        }
+                                    } catch (error) {
+                                        console.error('Failed to copy lyrics:', error);
                                     }
                                 }}
-                                className={`flex items-center gap-1 text-[10px] font-medium transition-colors ${copiedLyrics ? 'text-green-500' : 'text-zinc-500 hover:text-black dark:hover:text-white'}`}
+                                className={`flex items-center gap-1 text-[10px] font-medium transition-colors cursor-pointer ${copiedLyrics ? 'text-green-500' : 'text-zinc-500 hover:text-black dark:hover:text-white'}`}
                             >
                                 <Copy size={12} /> {copiedLyrics ? t('copied') : t('copy')}
                             </button>

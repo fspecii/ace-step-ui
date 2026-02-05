@@ -11,6 +11,7 @@ import { UsernameModal } from './components/UsernameModal';
 import { UserProfile } from './components/UserProfile';
 import { SettingsModal } from './components/SettingsModal';
 import { SongProfile } from './components/SongProfile';
+import { TrainingPanel } from './components/TrainingPanel';
 import { Song, GenerationParams, View, Playlist } from './types';
 import { generateApi, songsApi, playlistsApi, getAudioUrl } from './services/api';
 import { useAuth } from './context/AuthContext';
@@ -62,9 +63,13 @@ function AppContent() {
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
-  const [volume, setVolume] = useState(0.8);
+  const [volume, setVolume] = useState(() => {
+    const stored = localStorage.getItem('volume');
+    return stored ? parseFloat(stored) : 0.8;
+  });
+  const [playbackRate, setPlaybackRate] = useState(1.0);
   const [isShuffle, setIsShuffle] = useState(false);
-  const [repeatMode, setRepeatMode] = useState<'none' | 'all' | 'one'>('all');
+  const [repeatMode, setRepeatMode] = useState<'none' | 'all' | 'one'>('none');
 
   // UI State
   const [isGenerating, setIsGenerating] = useState(false);
@@ -164,6 +169,9 @@ function AppContent() {
   // Song Update Handler
   const handleSongUpdate = (updatedSong: Song) => {
     setSongs(prev => prev.map(s => s.id === updatedSong.id ? updatedSong : s));
+    if (currentSong?.id === updatedSong.id) {
+      setCurrentSong(updatedSong);
+    }
     if (selectedSong?.id === updatedSong.id) {
       setSelectedSong(updatedSong);
     }
@@ -231,6 +239,8 @@ function AppContent() {
         setMobileShowList(false);
       } else if (path === '/library') {
         setCurrentView('library');
+      } else if (path === '/training') {
+        setCurrentView('training');
       } else if (path.startsWith('/@')) {
         const username = path.substring(2);
         if (username) {
@@ -286,7 +296,7 @@ function AppContent() {
           viewCount: s.view_count || 0,
           userId: s.user_id,
           creator: s.creator,
-          model: s.model,
+          ditModel: s.ditModel,
         });
 
         const mySongs = mySongsRes.songs.map(mapSong);
@@ -486,6 +496,13 @@ function AppContent() {
     }
   }, [volume]);
 
+  // Handle Playback Rate
+  useEffect(() => {
+    if (audioRef.current) {
+      audioRef.current.playbackRate = playbackRate;
+    }
+  }, [playbackRate]);
+
   // Helper to cleanup a job and check if all jobs are done
   const cleanupJob = useCallback((jobId: string, tempId: string) => {
     const jobData = activeJobsRef.current.get(jobId);
@@ -526,7 +543,7 @@ function AppContent() {
         viewCount: s.view_count || 0,
         userId: s.user_id,
         creator: s.creator,
-        model: s.model,
+        ditModel: s.ditModel,
       }));
 
       // Preserve any generating songs that aren't in the loaded list
@@ -932,6 +949,9 @@ function AppContent() {
           />
         );
 
+      case 'training':
+        return <TrainingPanel />;
+
       case 'create':
       default:
         return (
@@ -971,6 +991,7 @@ function AppContent() {
                 onNavigateToProfile={handleNavigateToProfile}
                 onReusePrompt={handleReuse}
                 onDelete={handleDeleteSong}
+                onSongUpdate={handleSongUpdate}
               />
             </div>
 
@@ -1021,6 +1042,8 @@ function AppContent() {
               window.history.pushState({}, '', '/library');
             } else if (v === 'search') {
               window.history.pushState({}, '', '/search');
+            } else if (v === 'training') {
+              window.history.pushState({}, '', '/training');
             }
             if (isMobile) setShowLeftSidebar(false);
           }}
@@ -1050,6 +1073,9 @@ function AppContent() {
         onPrevious={playPrevious}
         volume={volume}
         onVolumeChange={setVolume}
+        playbackRate={playbackRate}
+        onPlaybackRateChange={setPlaybackRate}
+        audioRef={audioRef}
         isShuffle={isShuffle}
         onToggleShuffle={() => setIsShuffle(!isShuffle)}
         repeatMode={repeatMode}

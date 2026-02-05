@@ -16,7 +16,7 @@ export interface Song {
   userId?: string;
   creator?: string;
   creator_avatar?: string;
-  model?: string; // Model used for generation (e.g., 'acestep-v15-turbo')
+  ditModel?: string; // DiT model used for generation (e.g., 'acestep-v15-sft')
 }
 
 export interface Playlist {
@@ -56,7 +56,7 @@ export interface GenerationParams {
   lyrics: string;
   style: string;
   title: string;
-  model?: string;
+  ditModel?: string;
 
   // Common
   instrumental: boolean;
@@ -144,4 +144,4 @@ export interface UserProfile {
 }
 
 // Simplified views for ACE-Step UI
-export type View = 'create' | 'library' | 'profile' | 'song' | 'playlist' | 'search';
+export type View = 'create' | 'library' | 'profile' | 'song' | 'playlist' | 'search' | 'training';

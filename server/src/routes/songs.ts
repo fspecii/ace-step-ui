@@ -107,7 +107,7 @@ router.get('/', authMiddleware, async (req: AuthenticatedRequest, res: Response)
     const result = await pool.query(
       `SELECT s.id, s.title, s.lyrics, s.style, s.caption, s.cover_url, s.audio_url,
               s.duration, s.bpm, s.key_scale, s.time_signature, s.tags, s.is_public, 
-              s.like_count, s.view_count, s.user_id, s.model, s.created_at,
+              s.like_count, s.view_count, s.user_id, s.model as dit_model, s.created_at,
               COALESCE(u.username, 'Anonymous') as creator
        FROM songs s
        LEFT JOIN users u ON s.user_id = u.id
@@ -119,6 +119,7 @@ router.get('/', authMiddleware, async (req: AuthenticatedRequest, res: Response)
     const songs = await Promise.all(
       result.rows.map(async (row) => ({
         ...row,
+        ditModel: row.dit_model,
         audio_url: await resolveAccessibleAudioUrl(row.audio_url, row.is_public),
       }))
     );
@@ -136,7 +137,7 @@ router.get('/public/featured', optionalAuthMiddleware, async (_req: Authenticate
     // Return random songs - for local app, show all songs randomly
     const result = await pool.query(
       `SELECT s.id, s.title, s.lyrics, s.style, s.caption, s.cover_url, s.audio_url,
-              s.duration, s.bpm, s.key_scale, s.time_signature, s.tags, s.like_count, s.view_count, s.model, s.created_at, s.user_id,
+              s.duration, s.bpm, s.key_scale, s.time_signature, s.tags, s.like_count, s.view_count, s.model as dit_model, s.created_at, s.user_id,
               COALESCE(u.username, 'Anonymous') as creator, u.avatar_url as creator_avatar
        FROM songs s
        LEFT JOIN users u ON s.user_id = u.id
@@ -160,7 +161,7 @@ router.get('/public/featured', optionalAuthMiddleware, async (_req: Authenticate
         tags: row.tags || [],
         like_count: row.like_count || 0,
         view_count: row.view_count || 0,
-        model: row.model,
+        ditModel: row.dit_model,
         created_at: row.created_at,
         creator: row.creator,
         creator_avatar: row.creator_avatar,
@@ -184,7 +185,7 @@ router.get('/public', optionalAuthMiddleware, async (req: AuthenticatedRequest, 
 
     const result = await pool.query(
       `SELECT s.id, s.title, s.lyrics, s.style, s.caption, s.cover_url, s.audio_url,
-              s.duration, s.bpm, s.key_scale, s.time_signature, s.tags, s.like_count, s.model, s.created_at,
+              s.duration, s.bpm, s.key_scale, s.time_signature, s.tags, s.like_count, s.model as dit_model, s.created_at,
               COALESCE(u.username, 'Anonymous') as creator
        FROM songs s
        LEFT JOIN users u ON s.user_id = u.id
@@ -197,6 +198,7 @@ router.get('/public', optionalAuthMiddleware, async (req: AuthenticatedRequest, 
     const songs = await Promise.all(
       result.rows.map(async (row) => ({
         ...row,
+        ditModel: row.dit_model,
         audio_url: await resolveAccessibleAudioUrl(row.audio_url, true),
       }))
     );
@@ -213,7 +215,7 @@ router.get('/:id', optionalAuthMiddleware, async (req: AuthenticatedRequest, res
   try {
     const result = await pool.query(
       `SELECT s.id, s.user_id, s.title, s.lyrics, s.style, s.caption, s.cover_url, s.audio_url,
-              s.duration, s.bpm, s.key_scale, s.time_signature, s.tags, s.is_public, s.like_count, s.view_count, s.model, s.created_at,
+              s.duration, s.bpm, s.key_scale, s.time_signature, s.tags, s.is_public, s.like_count, s.view_count, s.model as dit_model, s.created_at,
               COALESCE(u.username, 'Anonymous') as creator, u.avatar_url as creator_avatar
        FROM songs s
        LEFT JOIN users u ON s.user_id = u.id
@@ -236,6 +238,7 @@ router.get('/:id', optionalAuthMiddleware, async (req: AuthenticatedRequest, res
 
     const resolvedSong = {
       ...song,
+      ditModel: song.dit_model,
       audio_url: await resolveAccessibleAudioUrl(song.audio_url, song.is_public),
     };
 
@@ -253,7 +256,7 @@ router.get('/:id/full', optionalAuthMiddleware, async (req: AuthenticatedRequest
       pool.query(
         `SELECT s.id, s.user_id, s.title, s.lyrics, s.style, s.caption, s.cover_url, s.audio_url,
                 s.duration, s.bpm, s.key_scale, s.time_signature, s.tags, s.is_public,
-                s.like_count, s.view_count, s.model, s.created_at,
+                s.like_count, s.view_count, s.model as dit_model, s.created_at,
                 COALESCE(u.username, 'Anonymous') as creator, u.avatar_url as creator_avatar
          FROM songs s
          LEFT JOIN users u ON s.user_id = u.id
@@ -289,6 +292,7 @@ router.get('/:id/full', optionalAuthMiddleware, async (req: AuthenticatedRequest
 
     const resolvedSong = {
       ...song,
+      ditModel: song.dit_model,
       audio_url: await resolveAccessibleAudioUrl(song.audio_url, song.is_public),
     };
 
@@ -384,12 +388,34 @@ router.patch('/:id', authMiddleware, async (req: AuthenticatedRequest, res: Resp
     updates.push(`updated_at = CURRENT_TIMESTAMP`);
     values.push(req.params.id);
 
-    const result = await pool.query(
-      `UPDATE songs SET ${updates.join(', ')} WHERE id = $${paramCount} RETURNING *`,
+    await pool.query(
+      `UPDATE songs 
+       SET ${updates.join(', ')} 
+       WHERE id = $${paramCount}`,
       values
     );
 
-    res.json({ song: result.rows[0] });
+    // Fetch complete song data with creator info
+    const result = await pool.query(
+      `SELECT s.id, s.title, s.lyrics, s.style, s.caption, s.cover_url, s.audio_url,
+              s.duration, s.bpm, s.key_scale, s.time_signature, s.tags, s.is_public, 
+              s.like_count, s.view_count, s.user_id, s.model as dit_model, s.created_at,
+              COALESCE(u.username, 'Anonymous') as creator
+       FROM songs s
+       LEFT JOIN users u ON s.user_id = u.id
+       WHERE s.id = $1`,
+      [req.params.id]
+    );
+
+    // Map database fields to frontend format
+    const song = result.rows[0];
+    const mappedSong = {
+      ...song,
+      ditModel: song.dit_model,
+      audio_url: await resolveAccessibleAudioUrl(song.audio_url, song.is_public),
+    };
+
+    res.json({ song: mappedSong });
   } catch (error) {
     console.error('Update song error:', error);
     res.status(500).json({ error: 'Internal server error' });
@@ -491,7 +517,7 @@ router.get('/liked/list', authMiddleware, async (req: AuthenticatedRequest, res:
   try {
     const result = await pool.query(
       `SELECT s.id, s.title, s.lyrics, s.style, s.cover_url, s.audio_url,
-              s.duration, s.tags, s.like_count, s.model, s.created_at, s.is_public,
+              s.duration, s.tags, s.like_count, s.model as dit_model, s.created_at, s.is_public,
               COALESCE(u.username, 'Anonymous') as creator
        FROM liked_songs ls
        JOIN songs s ON ls.song_id = s.id
@@ -504,6 +530,7 @@ router.get('/liked/list', authMiddleware, async (req: AuthenticatedRequest, res:
     const songs = await Promise.all(
       result.rows.map(async (row) => ({
         ...row,
+        ditModel: row.dit_model,
         audio_url: await resolveAccessibleAudioUrl(row.audio_url, row.is_public),
       }))
     );
