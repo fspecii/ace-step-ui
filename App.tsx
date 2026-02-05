@@ -104,6 +104,7 @@ function AppContent() {
   const [reuseData, setReuseData] = useState<{ song: Song, timestamp: number } | null>(null);
 
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const currentSongIdRef = useRef<string | null>(null);
   const pendingSeekRef = useRef<number | null>(null);
   const playNextRef = useRef<() => void>(() => {});
 
@@ -479,7 +480,8 @@ function AppContent() {
       }
     };
 
-    if (audio.src !== currentSong.audioUrl) {
+    if (currentSongIdRef.current !== currentSong.id) {
+      currentSongIdRef.current = currentSong.id;
       audio.src = currentSong.audioUrl;
       audio.load();
       if (isPlaying) playAudio();

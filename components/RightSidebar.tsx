@@ -356,16 +356,21 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({ song, onClose, onOpe
                         <div className="flex items-center justify-between">
                             <h2 className="text-sm font-bold text-zinc-900 dark:text-white uppercase tracking-wide">{t('songDetails')}</h2>
                             <button
-                                onClick={(e) => {
+                                onClick={async (e) => {
                                     e.stopPropagation();
-                                    const allTags = song.tags && song.tags.length > 0
-                                        ? song.tags.join(', ')
-                                        : song.style;
-                                    navigator.clipboard.writeText(allTags);
-                                    setCopiedStyle(true);
-                                    setTimeout(() => setCopiedStyle(false), 2000);
+                                    try {
+                                        const allTags = Array.isArray(song.tags) && song.tags.length > 0
+                                            ? song.tags.join(', ')
+                                            : (song.style ?? '');
+                                        if (!allTags) return;
+                                        await navigator.clipboard.writeText(allTags);
+                                        setCopiedStyle(true);
+                                        setTimeout(() => setCopiedStyle(false), 2000);
+                                    } catch (error) {
+                                        console.error('Failed to copy style tags:', error);
+                                    }
                                 }}
-                                className={`flex items-center gap-1 text-[10px] font-medium transition-colors ${copiedStyle ? 'text-green-500' : 'text-zinc-500 hover:text-black dark:hover:text-white'}`}
+                                className={`relative z-10 flex items-center gap-1 text-[10px] font-medium transition-colors cursor-pointer ${copiedStyle ? 'text-green-500' : 'text-zinc-500 hover:text-black dark:hover:text-white'}`}
                                 title={t('copyAllTags')}
                             >
                                 <Copy size={12} /> {copiedStyle ? t('copied') : t('copy')}
@@ -389,7 +394,7 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({ song, onClose, onOpe
                                 ))
                             )}
                             {!tagsExpanded && (
-                                <span className="absolute right-0 top-0 px-2 py-0.5 bg-zinc-200 dark:bg-zinc-700 rounded text-[11px] font-medium text-zinc-600 dark:text-zinc-300">
+                                <span className="absolute right-0 top-0 px-2 py-0.5 bg-zinc-200 dark:bg-zinc-700 rounded text-[11px] font-medium text-zinc-600 dark:text-zinc-300 pointer-events-none">
                                     +{t('more')}
                                 </span>
                             )}
