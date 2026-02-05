@@ -1368,7 +1368,7 @@ export const CreatePanel: React.FC<CreatePanelProps> = ({ onGenerate, isGenerati
             {/* Batch Size */}
             <div className="space-y-2">
               <div className="flex items-center justify-between">
-                <label className="text-xs font-medium text-zinc-600 dark:text-zinc-400">Batch Size (Variations)</label>
+                <label className="text-xs font-medium text-zinc-600 dark:text-zinc-400" title="Creates multiple variations in a single run. More variations = longer total time.">Variations Per Job</label>
                 <span className="text-xs font-mono text-zinc-900 dark:text-white bg-zinc-100 dark:bg-black/20 px-2 py-0.5 rounded">{batchSize}</span>
               </div>
               <input
@@ -1380,7 +1380,7 @@ export const CreatePanel: React.FC<CreatePanelProps> = ({ onGenerate, isGenerati
                 onChange={(e) => setBatchSize(Number(e.target.value))}
                 className="w-full h-2 bg-zinc-200 dark:bg-zinc-700 rounded-lg appearance-none cursor-pointer accent-pink-500"
               />
-              <p className="text-[10px] text-zinc-500">Number of song variations to generate</p>
+              <p className="text-[10px] text-zinc-500">How many versions to create in one run</p>
             </div>
 
             {/* Bulk Generate */}
@@ -1412,7 +1412,7 @@ export const CreatePanel: React.FC<CreatePanelProps> = ({ onGenerate, isGenerati
             {/* Inference Steps */}
             <div className="space-y-2">
               <div className="flex items-center justify-between">
-                <label className="text-xs font-medium text-zinc-600 dark:text-zinc-400">Inference Steps</label>
+                <label className="text-xs font-medium text-zinc-600 dark:text-zinc-400" title="More steps usually improves quality but slows generation.">Quality Steps</label>
                 <span className="text-xs font-mono text-zinc-900 dark:text-white bg-zinc-100 dark:bg-black/20 px-2 py-0.5 rounded">{inferenceSteps}</span>
               </div>
               <input
@@ -1424,13 +1424,13 @@ export const CreatePanel: React.FC<CreatePanelProps> = ({ onGenerate, isGenerati
                 onChange={(e) => setInferenceSteps(Number(e.target.value))}
                 className="w-full h-2 bg-zinc-200 dark:bg-zinc-700 rounded-lg appearance-none cursor-pointer accent-pink-500"
               />
-              <p className="text-[10px] text-zinc-500">More steps = better quality, slower (8 recommended for turbo)</p>
+              <p className="text-[10px] text-zinc-500">Higher = better quality, slower (8 recommended for turbo)</p>
             </div>
 
             {/* Guidance Scale */}
             <div className="space-y-2">
               <div className="flex items-center justify-between">
-                <label className="text-xs font-medium text-zinc-600 dark:text-zinc-400">Guidance Scale</label>
+                <label className="text-xs font-medium text-zinc-600 dark:text-zinc-400" title="How strongly the model follows the prompt. Higher = stricter, lower = freer.">Prompt Strength</label>
                 <span className="text-xs font-mono text-zinc-900 dark:text-white bg-zinc-100 dark:bg-black/20 px-2 py-0.5 rounded">{guidanceScale.toFixed(1)}</span>
               </div>
               <input
@@ -1442,7 +1442,7 @@ export const CreatePanel: React.FC<CreatePanelProps> = ({ onGenerate, isGenerati
                 onChange={(e) => setGuidanceScale(Number(e.target.value))}
                 className="w-full h-2 bg-zinc-200 dark:bg-zinc-700 rounded-lg appearance-none cursor-pointer accent-pink-500"
               />
-              <p className="text-[10px] text-zinc-500">How closely to follow the prompt</p>
+              <p className="text-[10px] text-zinc-500">Higher = follow prompt more, lower = more variation</p>
             </div>
 
             {/* Audio Format & Inference Method */}
@@ -1459,14 +1459,14 @@ export const CreatePanel: React.FC<CreatePanelProps> = ({ onGenerate, isGenerati
                 </select>
               </div>
               <div className="space-y-1.5">
-                <label className="text-xs font-medium text-zinc-600 dark:text-zinc-400">Inference Method</label>
+                <label className="text-xs font-medium text-zinc-600 dark:text-zinc-400" title="Deterministic is more repeatable; stochastic adds randomness.">Sampler</label>
                 <select
                   value={inferMethod}
                   onChange={(e) => setInferMethod(e.target.value as 'ode' | 'sde')}
                   className="w-full bg-zinc-50 dark:bg-black/20 border border-zinc-200 dark:border-white/10 rounded-lg px-2 py-1.5 text-xs text-zinc-900 dark:text-white focus:outline-none"
                 >
-                  <option value="ode">ODE (deterministic)</option>
-                  <option value="sde">SDE (stochastic)</option>
+                  <option value="ode">Deterministic (ODE)</option>
+                  <option value="sde">Stochastic (SDE)</option>
                 </select>
               </div>
             </div>
@@ -1476,7 +1476,7 @@ export const CreatePanel: React.FC<CreatePanelProps> = ({ onGenerate, isGenerati
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <Dices size={14} className="text-zinc-500" />
-                  <span className="text-xs font-medium text-zinc-600 dark:text-zinc-400">Seed</span>
+                  <span className="text-xs font-medium text-zinc-600 dark:text-zinc-400" title="Fixing the seed makes results repeatable. Random is recommended for variety.">Repeatable Seed</span>
                 </div>
                 <button
                   onClick={() => setRandomSeed(!randomSeed)}
@@ -1496,12 +1496,12 @@ export const CreatePanel: React.FC<CreatePanelProps> = ({ onGenerate, isGenerati
                   className={`flex-1 bg-zinc-50 dark:bg-black/20 border border-zinc-200 dark:border-white/10 rounded-lg px-3 py-1.5 text-xs text-zinc-900 dark:text-white focus:outline-none ${randomSeed ? 'opacity-40 cursor-not-allowed' : ''}`}
                 />
               </div>
-              <p className="text-[10px] text-zinc-500">{randomSeed ? 'Randomized every run (recommended)' : 'Fixed seed for reproducible results'}</p>
+              <p className="text-[10px] text-zinc-500">{randomSeed ? 'Random every run (recommended)' : 'Same seed = repeatable results'}</p>
             </div>
 
             {/* Thinking Toggle */}
             <div className="flex items-center justify-between py-2 border-t border-zinc-100 dark:border-white/5">
-              <span className="text-xs font-medium text-zinc-600 dark:text-zinc-400">Thinking (CoT)</span>
+              <span className="text-xs font-medium text-zinc-600 dark:text-zinc-400" title="Lets the lyric model reason about structure and metadata. Slightly slower.">Reasoning Pass (CoT)</span>
               <button
                 onClick={() => setThinking(!thinking)}
                 className={`w-10 h-5 rounded-full flex items-center transition-colors duration-200 px-0.5 border border-zinc-200 dark:border-white/5 ${thinking ? 'bg-pink-600' : 'bg-zinc-300 dark:bg-black/40'}`}
@@ -1513,7 +1513,7 @@ export const CreatePanel: React.FC<CreatePanelProps> = ({ onGenerate, isGenerati
             {/* Shift */}
             <div className="space-y-2">
               <div className="flex items-center justify-between">
-                <label className="text-xs font-medium text-zinc-600 dark:text-zinc-400">Shift</label>
+                <label className="text-xs font-medium text-zinc-600 dark:text-zinc-400" title="Adjusts the diffusion schedule. Only affects base model.">Timestep Shift</label>
                 <span className="text-xs font-mono text-zinc-900 dark:text-white bg-zinc-100 dark:bg-black/20 px-2 py-0.5 rounded">{shift.toFixed(1)}</span>
               </div>
               <input
@@ -1525,7 +1525,7 @@ export const CreatePanel: React.FC<CreatePanelProps> = ({ onGenerate, isGenerati
                 onChange={(e) => setShift(Number(e.target.value))}
                 className="w-full h-2 bg-zinc-200 dark:bg-zinc-700 rounded-lg appearance-none cursor-pointer accent-pink-500"
               />
-              <p className="text-[10px] text-zinc-500">Timestep shift for base models (not effective for turbo)</p>
+              <p className="text-[10px] text-zinc-500">Adjusts sampling schedule (base models only)</p>
             </div>
 
             {/* Divider */}
@@ -1545,8 +1545,8 @@ export const CreatePanel: React.FC<CreatePanelProps> = ({ onGenerate, isGenerati
               <div className="flex items-center gap-2">
                 <Music2 size={16} className="text-zinc-500" />
                 <div className="flex flex-col items-start">
-                  <span>LM Parameters</span>
-                  <span className="text-[11px] text-zinc-400 dark:text-zinc-500 font-normal">Control lyric generation + creativity</span>
+                  <span title="Controls the 5Hz lyric/caption model sampling behavior.">Lyric Model Controls</span>
+                  <span className="text-[11px] text-zinc-400 dark:text-zinc-500 font-normal">Controls the LLM used for lyrics/captions</span>
                 </div>
               </div>
               <ChevronDown size={16} className={`text-zinc-500 transition-transform ${showLmParams ? 'rotate-180' : ''}`} />
@@ -1557,7 +1557,7 @@ export const CreatePanel: React.FC<CreatePanelProps> = ({ onGenerate, isGenerati
                 {/* LM Temperature */}
                 <div className="space-y-2">
                   <div className="flex items-center justify-between">
-                    <label className="text-xs font-medium text-zinc-600 dark:text-zinc-400">Creativity (Temperature)</label>
+                    <label className="text-xs font-medium text-zinc-600 dark:text-zinc-400" title="Higher temperature = more random word choices.">Creativity (Temperature)</label>
                     <span className="text-xs font-mono text-zinc-900 dark:text-white bg-zinc-100 dark:bg-black/20 px-2 py-0.5 rounded">{lmTemperature.toFixed(2)}</span>
                   </div>
                   <input
@@ -1575,7 +1575,7 @@ export const CreatePanel: React.FC<CreatePanelProps> = ({ onGenerate, isGenerati
                 {/* LM CFG Scale */}
                 <div className="space-y-2">
                   <div className="flex items-center justify-between">
-                    <label className="text-xs font-medium text-zinc-600 dark:text-zinc-400">Prompt Adherence (CFG Scale)</label>
+                    <label className="text-xs font-medium text-zinc-600 dark:text-zinc-400" title="How strongly the lyric model follows the prompt.">Prompt Adherence (CFG Scale)</label>
                     <span className="text-xs font-mono text-zinc-900 dark:text-white bg-zinc-100 dark:bg-black/20 px-2 py-0.5 rounded">{lmCfgScale.toFixed(1)}</span>
                   </div>
                   <input
@@ -1594,7 +1594,7 @@ export const CreatePanel: React.FC<CreatePanelProps> = ({ onGenerate, isGenerati
                 <div className="grid grid-cols-2 gap-3">
                   <div className="space-y-2">
                     <div className="flex items-center justify-between">
-                      <label className="text-xs font-medium text-zinc-600 dark:text-zinc-400">Token Choice Limit (Top‑K)</label>
+                      <label className="text-xs font-medium text-zinc-600 dark:text-zinc-400" title="Restricts choices to the K most likely tokens. 0 disables.">Token Choice Limit (Top‑K)</label>
                       <span className="text-xs font-mono text-zinc-900 dark:text-white bg-zinc-100 dark:bg-black/20 px-2 py-0.5 rounded">{lmTopK}</span>
                     </div>
                     <input
@@ -1610,7 +1610,7 @@ export const CreatePanel: React.FC<CreatePanelProps> = ({ onGenerate, isGenerati
                   </div>
                   <div className="space-y-2">
                     <div className="flex items-center justify-between">
-                      <label className="text-xs font-medium text-zinc-600 dark:text-zinc-400">Probability Mass (Top‑P)</label>
+                      <label className="text-xs font-medium text-zinc-600 dark:text-zinc-400" title="Samples from the smallest set whose total probability is P.">Probability Mass (Top‑P)</label>
                       <span className="text-xs font-mono text-zinc-900 dark:text-white bg-zinc-100 dark:bg-black/20 px-2 py-0.5 rounded">{lmTopP.toFixed(2)}</span>
                     </div>
                     <input
@@ -1628,24 +1628,24 @@ export const CreatePanel: React.FC<CreatePanelProps> = ({ onGenerate, isGenerati
 
                 {/* LM Negative Prompt */}
                 <div className="space-y-1.5">
-                  <label className="text-xs font-medium text-zinc-600 dark:text-zinc-400">LM Negative Prompt</label>
+                  <label className="text-xs font-medium text-zinc-600 dark:text-zinc-400" title="Words or ideas to steer the lyric model away from.">Avoid These (Negative Prompt)</label>
                   <textarea
                     value={lmNegativePrompt}
                     onChange={(e) => setLmNegativePrompt(e.target.value)}
                     placeholder="Things to avoid..."
                     className="w-full h-16 bg-zinc-50 dark:bg-black/20 border border-zinc-200 dark:border-white/10 rounded-lg p-2 text-xs text-zinc-900 dark:text-white focus:outline-none resize-none"
                   />
-                  <p className="text-[10px] text-zinc-500">Use when LM CFG Scale {">"} 1.0</p>
+                  <p className="text-[10px] text-zinc-500">Works best when CFG is above 1.0</p>
                 </div>
               </div>
             )}
 
             <div className="space-y-1">
-              <h4 className="text-xs font-bold text-zinc-500 dark:text-zinc-400 uppercase tracking-wide">Transform</h4>
-              <p className="text-[11px] text-zinc-400 dark:text-zinc-500">Control how much the model follows the source audio.</p>
+              <h4 className="text-xs font-bold text-zinc-500 dark:text-zinc-400 uppercase tracking-wide" title="Controls how much the output follows the input audio.">Source Audio</h4>
+              <p className="text-[11px] text-zinc-400 dark:text-zinc-500">Controls how much to follow the input audio.</p>
             </div>
             <div className="space-y-1.5">
-              <label className="text-xs font-medium text-zinc-600 dark:text-zinc-400">Audio Codes</label>
+              <label className="text-xs font-medium text-zinc-600 dark:text-zinc-400" title="Advanced: precomputed audio codes for conditioning.">Audio Codes (Advanced)</label>
               <textarea
                 value={audioCodes}
                 onChange={(e) => setAudioCodes(e.target.value)}
@@ -1656,7 +1656,7 @@ export const CreatePanel: React.FC<CreatePanelProps> = ({ onGenerate, isGenerati
 
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
-                <label className="text-xs font-medium text-zinc-600 dark:text-zinc-400">Task Type</label>
+                <label className="text-xs font-medium text-zinc-600 dark:text-zinc-400" title="Choose text-to-music or audio-based modes.">Generation Mode</label>
                 <select
                   value={taskType}
                   onChange={(e) => setTaskType(e.target.value)}
@@ -1669,7 +1669,7 @@ export const CreatePanel: React.FC<CreatePanelProps> = ({ onGenerate, isGenerati
                 </select>
               </div>
               <div className="space-y-1.5">
-                <label className="text-xs font-medium text-zinc-600 dark:text-zinc-400">Audio Cover Strength</label>
+                <label className="text-xs font-medium text-zinc-600 dark:text-zinc-400" title="How strongly the source audio shapes the result.">Cover Influence</label>
                 <input
                   type="number"
                   step="0.05"
@@ -1684,7 +1684,7 @@ export const CreatePanel: React.FC<CreatePanelProps> = ({ onGenerate, isGenerati
 
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
-                <label className="text-xs font-medium text-zinc-600 dark:text-zinc-400">Repainting Start</label>
+                <label className="text-xs font-medium text-zinc-600 dark:text-zinc-400" title="Start time for the region to repaint (seconds).">Repaint Start (sec)</label>
                 <input
                   type="number"
                   step="0.1"
@@ -1694,7 +1694,7 @@ export const CreatePanel: React.FC<CreatePanelProps> = ({ onGenerate, isGenerati
                 />
               </div>
               <div className="space-y-1.5">
-                <label className="text-xs font-medium text-zinc-600 dark:text-zinc-400">Repainting End</label>
+                <label className="text-xs font-medium text-zinc-600 dark:text-zinc-400" title="End time for the region to repaint (seconds).">Repaint End (sec)</label>
                 <input
                   type="number"
                   step="0.1"
@@ -1706,7 +1706,7 @@ export const CreatePanel: React.FC<CreatePanelProps> = ({ onGenerate, isGenerati
             </div>
 
             <div className="space-y-1.5">
-              <label className="text-xs font-medium text-zinc-600 dark:text-zinc-400">Instruction</label>
+              <label className="text-xs font-medium text-zinc-600 dark:text-zinc-400" title="Additional directives to guide generation.">Extra Instructions</label>
               <textarea
                 value={instruction}
                 onChange={(e) => setInstruction(e.target.value)}
@@ -1715,12 +1715,12 @@ export const CreatePanel: React.FC<CreatePanelProps> = ({ onGenerate, isGenerati
             </div>
 
             <div className="space-y-1">
-              <h4 className="text-xs font-bold text-zinc-500 dark:text-zinc-400 uppercase tracking-wide">Guidance</h4>
-              <p className="text-[11px] text-zinc-400 dark:text-zinc-500">Advanced CFG scheduling controls.</p>
+              <h4 className="text-xs font-bold text-zinc-500 dark:text-zinc-400 uppercase tracking-wide" title="Controls when guidance is applied across diffusion steps.">Guidance Schedule</h4>
+              <p className="text-[11px] text-zinc-400 dark:text-zinc-500">When to apply guidance during sampling.</p>
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
-                <label className="text-xs font-medium text-zinc-600 dark:text-zinc-400">CFG Interval Start</label>
+                <label className="text-xs font-medium text-zinc-600 dark:text-zinc-400" title="Fraction of the diffusion process to start applying guidance.">Guidance Start (0–1)</label>
                 <input
                   type="number"
                   step="0.05"
@@ -1732,7 +1732,7 @@ export const CreatePanel: React.FC<CreatePanelProps> = ({ onGenerate, isGenerati
                 />
               </div>
               <div className="space-y-1.5">
-                <label className="text-xs font-medium text-zinc-600 dark:text-zinc-400">CFG Interval End</label>
+                <label className="text-xs font-medium text-zinc-600 dark:text-zinc-400" title="Fraction of the diffusion process to stop applying guidance.">Guidance End (0–1)</label>
                 <input
                   type="number"
                   step="0.05"
@@ -1746,7 +1746,7 @@ export const CreatePanel: React.FC<CreatePanelProps> = ({ onGenerate, isGenerati
             </div>
 
             <div className="space-y-1.5">
-              <label className="text-xs font-medium text-zinc-600 dark:text-zinc-400">Custom Timesteps</label>
+              <label className="text-xs font-medium text-zinc-600 dark:text-zinc-400" title="Override the default timestep schedule (advanced).">Custom Timesteps (Advanced)</label>
               <input
                 type="text"
                 value={customTimesteps}
@@ -1758,7 +1758,7 @@ export const CreatePanel: React.FC<CreatePanelProps> = ({ onGenerate, isGenerati
 
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
-                <label className="text-xs font-medium text-zinc-600 dark:text-zinc-400">Score Scale</label>
+                <label className="text-xs font-medium text-zinc-600 dark:text-zinc-400" title="Scales score-based guidance (advanced).">Score Weight</label>
                 <input
                   type="number"
                   step="0.05"
@@ -1768,7 +1768,7 @@ export const CreatePanel: React.FC<CreatePanelProps> = ({ onGenerate, isGenerati
                 />
               </div>
               <div className="space-y-1.5">
-                <label className="text-xs font-medium text-zinc-600 dark:text-zinc-400">LM Batch Chunk Size</label>
+                <label className="text-xs font-medium text-zinc-600 dark:text-zinc-400" title="Bigger chunks can be faster but use more memory.">LM Batch Chunk Size (Performance)</label>
                 <input
                   type="number"
                   min="1"
@@ -1802,43 +1802,46 @@ export const CreatePanel: React.FC<CreatePanelProps> = ({ onGenerate, isGenerati
             </div>
 
             <div className="grid grid-cols-2 gap-3">
-              <label className="flex items-center gap-2 text-xs font-medium text-zinc-600 dark:text-zinc-400">
+              <label
+                className="flex items-center gap-2 text-xs font-medium text-zinc-600 dark:text-zinc-400"
+                title="Adaptive Dual Guidance: dynamically adjusts CFG for quality. Base model only; slower."
+              >
                 <input type="checkbox" checked={useAdg} onChange={() => setUseAdg(!useAdg)} />
-                Use ADG
+                Adaptive Dual Guidance (ADG)
               </label>
-              <label className="flex items-center gap-2 text-xs font-medium text-zinc-600 dark:text-zinc-400">
+              <label className="flex items-center gap-2 text-xs font-medium text-zinc-600 dark:text-zinc-400" title="Allow the LM to run in larger batches for speed (more VRAM).">
                 <input type="checkbox" checked={allowLmBatch} onChange={() => setAllowLmBatch(!allowLmBatch)} />
                 Allow LM Batch
               </label>
-              <label className="flex items-center gap-2 text-xs font-medium text-zinc-600 dark:text-zinc-400">
+              <label className="flex items-center gap-2 text-xs font-medium text-zinc-600 dark:text-zinc-400" title="Let the LM reason about metadata like BPM, key, duration.">
                 <input type="checkbox" checked={useCotMetas} onChange={() => setUseCotMetas(!useCotMetas)} />
                 Use CoT Metas
               </label>
-              <label className="flex items-center gap-2 text-xs font-medium text-zinc-600 dark:text-zinc-400">
+              <label className="flex items-center gap-2 text-xs font-medium text-zinc-600 dark:text-zinc-400" title="Let the LM reason about the caption/style text.">
                 <input type="checkbox" checked={useCotCaption} onChange={() => setUseCotCaption(!useCotCaption)} />
                 Use CoT Caption
               </label>
-              <label className="flex items-center gap-2 text-xs font-medium text-zinc-600 dark:text-zinc-400">
+              <label className="flex items-center gap-2 text-xs font-medium text-zinc-600 dark:text-zinc-400" title="Let the LM reason about language selection.">
                 <input type="checkbox" checked={useCotLanguage} onChange={() => setUseCotLanguage(!useCotLanguage)} />
                 Use CoT Language
               </label>
-              <label className="flex items-center gap-2 text-xs font-medium text-zinc-600 dark:text-zinc-400">
+              <label className="flex items-center gap-2 text-xs font-medium text-zinc-600 dark:text-zinc-400" title="Auto-generate missing fields when possible.">
                 <input type="checkbox" checked={autogen} onChange={() => setAutogen(!autogen)} />
                 Autogen
               </label>
-              <label className="flex items-center gap-2 text-xs font-medium text-zinc-600 dark:text-zinc-400">
+              <label className="flex items-center gap-2 text-xs font-medium text-zinc-600 dark:text-zinc-400" title="Include debug info for constrained decoding.">
                 <input type="checkbox" checked={constrainedDecodingDebug} onChange={() => setConstrainedDecodingDebug(!constrainedDecodingDebug)} />
                 Constrained Decoding Debug
               </label>
-              <label className="flex items-center gap-2 text-xs font-medium text-zinc-600 dark:text-zinc-400">
+              <label className="flex items-center gap-2 text-xs font-medium text-zinc-600 dark:text-zinc-400" title="Use the formatted caption produced by the AI formatter.">
                 <input type="checkbox" checked={isFormatCaption} onChange={() => setIsFormatCaption(!isFormatCaption)} />
                 Format Caption
               </label>
-              <label className="flex items-center gap-2 text-xs font-medium text-zinc-600 dark:text-zinc-400">
+              <label className="flex items-center gap-2 text-xs font-medium text-zinc-600 dark:text-zinc-400" title="Return scorer outputs for diagnostics.">
                 <input type="checkbox" checked={getScores} onChange={() => setGetScores(!getScores)} />
                 Get Scores
               </label>
-              <label className="flex items-center gap-2 text-xs font-medium text-zinc-600 dark:text-zinc-400">
+              <label className="flex items-center gap-2 text-xs font-medium text-zinc-600 dark:text-zinc-400" title="Return synced lyric (LRC) output when available.">
                 <input type="checkbox" checked={getLrc} onChange={() => setGetLrc(!getLrc)} />
                 Get LRC (Lyrics)
               </label>
