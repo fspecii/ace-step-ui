@@ -102,7 +102,7 @@ export const SongList: React.FC<SongListProps> = ({
     onNavigateToProfile,
     onReusePrompt,
     onDelete,
-    onSongUpdate
+    onSongUpdate,
     onDeleteMany,
     onUseAsReference,
     onCoverSong,
@@ -462,7 +462,7 @@ const SongItem: React.FC<SongItemProps> = ({
     onNavigateToProfile,
     onReusePrompt,
     onDelete,
-    onSongUpdate
+    onSongUpdate,
     onUseAsReference,
     onCoverSong
 }) => {
