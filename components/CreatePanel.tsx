@@ -115,6 +115,18 @@ export const CreatePanel: React.FC<CreatePanelProps> = ({
   const { isAuthenticated, token, user } = useAuth();
   const { t } = useI18n();
 
+  // Randomly select 6 music tags from MAIN_STYLES
+  const [musicTags, setMusicTags] = useState<string[]>(() => {
+    const shuffled = [...MAIN_STYLES].sort(() => Math.random() - 0.5);
+    return shuffled.slice(0, 6);
+  });
+
+  // Function to refresh music tags
+  const refreshMusicTags = useCallback(() => {
+    const shuffled = [...MAIN_STYLES].sort(() => Math.random() - 0.5);
+    setMusicTags(shuffled.slice(0, 6));
+  }, []);
+
   // Mode
   const [customMode, setCustomMode] = useState(true);
 
@@ -1137,7 +1149,7 @@ export const CreatePanel: React.FC<CreatePanelProps> = ({
                   onChange={(e) => setVocalLanguage(e.target.value)}
                   className="flex-1 min-w-[180px] bg-transparent text-sm text-zinc-900 dark:text-white focus:outline-none"
                 >
-                  {VOCAL_LANGUAGES.map(lang => (
+                  {VOCAL_LANGUAGE_KEYS.map(lang => (
                     <option key={lang.value} value={lang.value}>{lang.key}</option>
                   ))}
                 </select>
@@ -1495,10 +1507,10 @@ export const CreatePanel: React.FC<CreatePanelProps> = ({
                     <Dices size={14} />
                   </button>
                   <button
-                    className={`p-1.5 hover:bg-zinc-200 dark:hover:bg-white/10 rounded transition-colors ${isFormatting ? 'text-pink-500 animate-pulse' : 'text-zinc-500 hover:text-black dark:hover:text-white'}`}
+                    className={`p-1.5 hover:bg-zinc-200 dark:hover:bg-white/10 rounded transition-colors ${isFormattingLyrics ? 'text-pink-500 animate-pulse' : 'text-zinc-500 hover:text-black dark:hover:text-white'}`}
                     title="AI Format - Enhance style & auto-fill parameters"
                     onClick={handleFormat}
-                    disabled={isFormatting || !style.trim()}
+                    disabled={isFormattingLyrics || !style.trim()}
                   >
                     <Sparkles size={14} />
                   </button>
@@ -1845,7 +1857,7 @@ export const CreatePanel: React.FC<CreatePanelProps> = ({
               step={1}
               onChange={(e) => { const v = Number(e.target.value); setBatchSize(v); localStorage.setItem('ace-batchSize', String(v)); }}
               helpText={t('numberOfVariations')}
-              title="Creates multiple variations in a single run. More variations = longer total time.
+              title="Creates multiple variations in a single run. More variations = longer total time."
             />
 
             {/* Bulk Generate */}
