@@ -3,6 +3,7 @@ import { Song } from '../types';
 import { Heart, Share2, Play, Pause, MoreHorizontal, X, Copy, Wand2, MoreVertical, Download, Repeat, Video, Music, Link as LinkIcon, Sparkles, Globe, Lock, Trash2, Edit3, Layers } from 'lucide-react';
 import { songsApi } from '../services/api';
 import { useAuth } from '../context/AuthContext';
+import { useI18n } from '../context/I18nContext';
 import { SongDropdownMenu } from './SongDropdownMenu';
 import { ShareModal } from './ShareModal';
 import { AlbumCover } from './AlbumCover';
@@ -26,6 +27,7 @@ interface RightSidebarProps {
 
 export const RightSidebar: React.FC<RightSidebarProps> = ({ song, onClose, onOpenVideo, onReuse, onSongUpdate, onNavigateToProfile, onNavigateToSong, isLiked, onToggleLike, onDelete, onAddToPlaylist, onPlay, isPlaying, currentSong }) => {
     const { token, user } = useAuth();
+    const { t } = useI18n();
     const [showMenu, setShowMenu] = useState(false);
     const [isOwner, setIsOwner] = useState(false);
     const [tagsExpanded, setTagsExpanded] = useState(false);
@@ -118,7 +120,7 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({ song, onClose, onOpe
         <div className="w-full h-full bg-zinc-50 dark:bg-suno-panel border-l border-zinc-200 dark:border-white/5 flex items-center justify-center text-zinc-400 dark:text-zinc-500 text-sm transition-colors duration-300">
             <div className="flex flex-col items-center gap-2">
                 <Music size={40} className="text-zinc-300 dark:text-zinc-700" />
-                <p>Select a song to view details</p>
+                <p>{t('selectSongToView')}</p>
             </div>
         </div>
     );
@@ -128,7 +130,7 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({ song, onClose, onOpe
 
             {/* Header */}
             <div className="h-14 flex items-center justify-between px-4 border-b border-zinc-200 dark:border-white/5 flex-shrink-0 bg-zinc-50/50 dark:bg-suno-panel/50 backdrop-blur-md z-10">
-                <span className="font-semibold text-sm text-zinc-900 dark:text-white">Song Details</span>
+                <span className="font-semibold text-sm text-zinc-900 dark:text-white">{t('songDetails')}</span>
                 <button
                     onClick={onClose}
                     className="p-1.5 hover:bg-zinc-200 dark:hover:bg-white/10 rounded-full text-zinc-500 dark:text-zinc-400 transition-colors"
@@ -138,7 +140,7 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({ song, onClose, onOpe
             </div>
 
             <div className="flex-1 overflow-y-auto custom-scrollbar">
-                <div className="p-5 space-y-6">
+                <div className="p-5 pb-24 lg:pb-32 space-y-6">
 
                     {/* Cover Art */}
                     <div
@@ -217,14 +219,14 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({ song, onClose, onOpe
                                                 disabled={isSavingTitle}
                                                 className="px-3 py-1.5 rounded-md text-xs font-semibold bg-pink-600 text-white hover:bg-pink-700 disabled:opacity-60"
                                             >
-                                                {isSavingTitle ? 'Saving...' : 'Save'}
+                                                {isSavingTitle ? t('saving') : t('save')}
                                             </button>
                                             <button
                                                 onClick={cancelTitleEdit}
                                                 disabled={isSavingTitle}
                                                 className="px-3 py-1.5 rounded-md text-xs font-semibold bg-zinc-200 text-zinc-700 hover:bg-zinc-300 dark:bg-white/10 dark:text-zinc-200 dark:hover:bg-white/20 disabled:opacity-60"
                                             >
-                                                Cancel
+                                                {t('cancel')}
                                             </button>
                                             {titleError && (
                                                 <span className="text-xs text-red-500">{titleError}</span>
@@ -278,9 +280,9 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({ song, onClose, onOpe
                                     onClick={() => song.creator && onNavigateToProfile?.(song.creator)}
                                     className="text-sm font-semibold text-zinc-900 dark:text-white hover:underline cursor-pointer"
                                 >
-                                    {song.creator || 'Anonymous'}
+                                    {song.creator || t('anonymous')}
                                 </span>
-                                <span className="text-xs text-zinc-500 dark:text-zinc-400">Created {new Date(song.createdAt).toLocaleDateString()}</span>
+                                <p className="text-xs text-zinc-500">{t('created')} {new Date(song.createdAt).toLocaleDateString()}</p>
                             </div>
                         </div>
                     </div>
@@ -289,7 +291,7 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({ song, onClose, onOpe
                     <div className="flex items-center justify-between px-3 py-2.5 bg-zinc-200/80 dark:bg-black/40 backdrop-blur-sm rounded-2xl border border-zinc-300/50 dark:border-white/5">
                         <button
                             onClick={onOpenVideo}
-                            title="Create Video"
+                            title={t('createVideo')}
                             className="p-3 text-zinc-500 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-white hover:bg-zinc-300/50 dark:hover:bg-white/10 rounded-xl transition-all duration-200"
                         >
                             <Video size={18} strokeWidth={1.5} />
@@ -300,14 +302,14 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({ song, onClose, onOpe
                                 const audioUrl = song.audioUrl.startsWith('http') ? song.audioUrl : `${window.location.origin}${song.audioUrl}`;
                                 window.open(`/editor?audioUrl=${encodeURIComponent(audioUrl)}`, '_blank');
                             }}
-                            title="Open in Editor"
+                            title={t('openInEditor')}
                             className="p-3 text-zinc-500 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-white hover:bg-zinc-300/50 dark:hover:bg-white/10 rounded-xl transition-all duration-200"
                         >
                             <Edit3 size={18} strokeWidth={1.5} />
                         </button>
                         <button
                             onClick={() => onReuse && onReuse(song)}
-                            title="Reuse Prompt"
+                            title={t('reusePrompt')}
                             className="p-3 text-zinc-500 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-white hover:bg-zinc-300/50 dark:hover:bg-white/10 rounded-xl transition-all duration-200"
                         >
                             <Repeat size={18} strokeWidth={1.5} />
@@ -321,7 +323,7 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({ song, onClose, onOpe
                                 const audioUrl = song.audioUrl.startsWith('http') ? song.audioUrl : `${baseUrl}${song.audioUrl}`;
                                 window.open(`${baseUrl}/demucs-web/?audioUrl=${encodeURIComponent(audioUrl)}`, '_blank');
                             }}
-                            title="Extract Stems"
+                            title={t('extractStems')}
                             className="p-3 text-zinc-500 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-white hover:bg-zinc-300/50 dark:hover:bg-white/10 rounded-xl transition-all duration-200"
                         >
                             <Layers size={18} strokeWidth={1.5} />
@@ -342,7 +344,7 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({ song, onClose, onOpe
                         <div className="flex items-center gap-2">
                             <button
                                 className="p-2 text-zinc-400 hover:text-zinc-900 dark:hover:text-white transition-colors"
-                                title="Download Audio"
+                                title={t('downloadAudio')}
                                 onClick={async () => {
                                     if (!song.audioUrl) return;
                                     try {
@@ -454,21 +456,26 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({ song, onClose, onOpe
                     {/* Tags / Style */}
                     <div className="space-y-2">
                         <div className="flex items-center justify-between">
-                            <h3 className="text-xs font-bold text-zinc-500 dark:text-zinc-500 uppercase tracking-wider">Style & Tags</h3>
+                            <h2 className="text-sm font-bold text-zinc-900 dark:text-white uppercase tracking-wide">{t('songDetails')}</h2>
                             <button
-                                onClick={(e) => {
+                                onClick={async (e) => {
                                     e.stopPropagation();
-                                    const allTags = song.tags && song.tags.length > 0
-                                        ? song.tags.join(', ')
-                                        : song.style;
-                                    navigator.clipboard.writeText(allTags);
-                                    setCopiedStyle(true);
-                                    setTimeout(() => setCopiedStyle(false), 2000);
+                                    try {
+                                        const allTags = Array.isArray(song.tags) && song.tags.length > 0
+                                            ? song.tags.join(', ')
+                                            : (song.style ?? '');
+                                        if (!allTags) return;
+                                        await navigator.clipboard.writeText(allTags);
+                                        setCopiedStyle(true);
+                                        setTimeout(() => setCopiedStyle(false), 2000);
+                                    } catch (error) {
+                                        console.error('Failed to copy style tags:', error);
+                                    }
                                 }}
-                                className={`flex items-center gap-1 text-[10px] font-medium transition-colors ${copiedStyle ? 'text-green-500' : 'text-zinc-500 hover:text-black dark:hover:text-white'}`}
-                                title="Copy all tags"
+                                className={`relative z-10 flex items-center gap-1 text-[10px] font-medium transition-colors cursor-pointer ${copiedStyle ? 'text-green-500' : 'text-zinc-500 hover:text-black dark:hover:text-white'}`}
+                                title={t('copyAllTags')}
                             >
-                                <Copy size={12} /> {copiedStyle ? 'Copied!' : 'Copy'}
+                                <Copy size={12} /> {copiedStyle ? t('copied') : t('copy')}
                             </button>
                         </div>
                         <div
@@ -489,8 +496,8 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({ song, onClose, onOpe
                                 ))
                             )}
                             {!tagsExpanded && (
-                                <span className="absolute right-0 top-0 px-2 py-0.5 bg-zinc-200 dark:bg-zinc-700 rounded text-[11px] font-medium text-zinc-600 dark:text-zinc-300">
-                                    +more
+                                <span className="absolute right-0 top-0 px-2 py-0.5 bg-zinc-200 dark:bg-zinc-700 rounded text-[11px] font-medium text-zinc-600 dark:text-zinc-300 pointer-events-none">
+                                    +{t('more')}
                                 </span>
                             )}
                         </div>
@@ -499,18 +506,23 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({ song, onClose, onOpe
                     {/* Lyrics Section */}
                     <div className="bg-white dark:bg-black/20 rounded-xl border border-zinc-200 dark:border-white/5 overflow-hidden">
                         <div className="px-4 py-3 border-b border-zinc-100 dark:border-white/5 flex items-center justify-between bg-zinc-50 dark:bg-white/5">
-                            <h3 className="text-xs font-bold text-zinc-500 dark:text-zinc-400 uppercase tracking-wider">Lyrics</h3>
+                            <h3 className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider mb-2 flex items-center justify-between">{t('lyricsSection')}</h3>
                             <button
-                                onClick={() => {
-                                    if (song.lyrics) {
-                                        navigator.clipboard.writeText(song.lyrics);
-                                        setCopiedLyrics(true);
-                                        setTimeout(() => setCopiedLyrics(false), 2000);
+                                onClick={async (e) => {
+                                    e.stopPropagation();
+                                    try {
+                                        if (song.lyrics) {
+                                            await navigator.clipboard.writeText(song.lyrics);
+                                            setCopiedLyrics(true);
+                                            setTimeout(() => setCopiedLyrics(false), 2000);
+                                        }
+                                    } catch (error) {
+                                        console.error('Failed to copy lyrics:', error);
                                     }
                                 }}
-                                className={`flex items-center gap-1 text-[10px] font-medium transition-colors ${copiedLyrics ? 'text-green-500' : 'text-zinc-500 hover:text-black dark:hover:text-white'}`}
+                                className={`flex items-center gap-1 text-[10px] font-medium transition-colors cursor-pointer ${copiedLyrics ? 'text-green-500' : 'text-zinc-500 hover:text-black dark:hover:text-white'}`}
                             >
-                                <Copy size={12} /> {copiedLyrics ? 'Copied!' : 'Copy'}
+                                <Copy size={12} /> {copiedLyrics ? t('copied') : t('copy')}
                             </button>
                         </div>
                         <div className="p-4 max-h-[300px] overflow-y-auto custom-scrollbar">

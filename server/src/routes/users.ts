@@ -106,7 +106,7 @@ router.get('/:username/songs', async (req, res: Response) => {
         const songsResult = await pool.query(
             `SELECT s.id, s.title, s.lyrics, s.style, s.caption, s.cover_url, s.audio_url,
               s.duration, s.bpm, s.key_scale, s.time_signature, s.tags, s.like_count,
-              s.view_count, s.created_at, u.username as creator
+              s.view_count, s.model as dit_model, s.created_at, u.username as creator
        FROM songs s
        LEFT JOIN users u ON s.user_id = u.id
        WHERE s.user_id = $1 AND s.is_public = 1
@@ -117,6 +117,7 @@ router.get('/:username/songs', async (req, res: Response) => {
         const songs = await Promise.all(
             songsResult.rows.map(async (row) => ({
                 ...row,
+                ditModel: row.dit_model,
                 audio_url: await resolvePublicAudioUrl(row.audio_url),
             }))
         );

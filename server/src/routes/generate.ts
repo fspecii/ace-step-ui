@@ -6,16 +6,14 @@ import { pool } from '../db/pool.js';
 import { generateUUID } from '../db/sqlite.js';
 import { authMiddleware, AuthenticatedRequest } from '../middleware/auth.js';
 import {
-  generateMusicViaAPI,
-  getJobStatus,
   getAudioStream,
   discoverEndpoints,
   checkSpaceHealth,
-  cleanupJob,
-  getJobRawResponse,
   downloadAudioToBuffer,
+  getJobRawResponse,
   resolvePythonPath,
 } from '../services/acestep.js';
+import { config } from '../config/index.js';
 import { getStorageProvider } from '../services/storage/factory.js';
 
 const router = Router();
@@ -64,6 +62,9 @@ interface GenerateBody {
   lyrics: string;
   style: string;
   title: string;
+
+  // Model Selection
+  ditModel?: string;
 
   // Common
   instrumental: boolean;
@@ -123,6 +124,7 @@ interface GenerateBody {
   trackName?: string;
   completeTrackClasses?: string[];
   isFormatCaption?: boolean;
+  loraLoaded?: boolean;
 }
 
 router.post('/upload-audio', authMiddleware, audioUpload.single('audio'), async (req: AuthenticatedRequest, res: Response) => {
@@ -178,6 +180,7 @@ router.post('/', authMiddleware, async (req: AuthenticatedRequest, res: Response
       lyrics,
       style,
       title,
+      ditModel,
       instrumental,
       vocalLanguage,
       duration,
@@ -227,6 +230,7 @@ router.post('/', authMiddleware, async (req: AuthenticatedRequest, res: Response
       trackName,
       completeTrackClasses,
       isFormatCaption,
+      loraLoaded,
     } = req.body as GenerateBody;
 
     if (!customMode && !songDescription) {
@@ -245,6 +249,7 @@ router.post('/', authMiddleware, async (req: AuthenticatedRequest, res: Response
       lyrics,
       style,
       title,
+      ditModel,
       instrumental,
       vocalLanguage,
       duration,
@@ -294,6 +299,7 @@ router.post('/', authMiddleware, async (req: AuthenticatedRequest, res: Response
       trackName,
       completeTrackClasses,
       isFormatCaption,
+      loraLoaded,
     };
 
     // Create job record in database
@@ -304,13 +310,70 @@ router.post('/', authMiddleware, async (req: AuthenticatedRequest, res: Response
       [localJobId, req.user!.id, JSON.stringify(params)]
     );
 
-    // Start generation
-    const { jobId: hfJobId } = await generateMusicViaAPI(params);
+    // Call 8001 API to start generation
+    const acestepResponse = await fetch(`${config.acestep.apiUrl}/release_task`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': process.env.ACESTEP_API_KEY || '',
+      },
+      body: JSON.stringify({
+        prompt: params.customMode ? params.style : (params.songDescription || params.style),
+        lyrics: params.instrumental ? '' : (params.lyrics || ''),
+        thinking: params.loraLoaded ? false : (params.thinking || false),
+        dit_model: params.ditModel,
+        bpm: params.bpm,
+        key_scale: params.keyScale,
+        time_signature: params.timeSignature,
+        audio_duration: params.duration,
+        vocal_language: params.vocalLanguage || 'en',
+        inference_steps: params.inferenceSteps || 8,
+        guidance_scale: params.guidanceScale || 7.0,
+        use_random_seed: params.randomSeed !== false,
+        seed: params.seed || -1,
+        batch_size: params.batchSize || 1,
+        audio_code_string: params.audioCodes,
+        repainting_start: params.repaintingStart || 0.0,
+        repainting_end: params.repaintingEnd,
+        instruction: params.instruction,
+        audio_cover_strength: params.audioCoverStrength || 1.0,
+        task_type: params.taskType || 'text2music',
+        use_adg: params.loraLoaded ? false : (params.useAdg || false),
+        cfg_interval_start: params.cfgIntervalStart || 0.0,
+        cfg_interval_end: params.cfgIntervalEnd || 1.0,
+        infer_method: params.inferMethod || 'ode',
+        shift: params.shift,
+        audio_format: params.audioFormat || 'mp3',
+        ...(!params.loraLoaded && params.thinking ? {
+          lm_model_path: params.lmModel || undefined,
+          lm_backend: params.lmBackend || 'pt',
+          lm_temperature: params.lmTemperature,
+          lm_cfg_scale: params.lmCfgScale,
+          lm_top_k: params.lmTopK,
+          lm_top_p: params.lmTopP,
+          lm_negative_prompt: params.lmNegativePrompt,
+          use_cot_caption: params.useCotCaption !== false,
+          use_cot_language: params.useCotLanguage !== false,
+        } : {}),
+      }),
+    });
+
+    if (!acestepResponse.ok) {
+      const error = await acestepResponse.json().catch(() => ({ error: 'Generation failed' }));
+      throw new Error(error.error || error.message || 'Failed to start generation');
+    }
+
+    const acestepResult = await acestepResponse.json();
+    const taskId = acestepResult.data?.task_id || acestepResult.task_id;
+
+    if (!taskId) {
+      throw new Error('No task ID returned from ACE-Step API');
+    }
 
     // Update job with ACE-Step task ID
     await pool.query(
       `UPDATE generation_jobs SET acestep_task_id = ?, status = 'running', updated_at = datetime('now') WHERE id = ?`,
-      [hfJobId, localJobId]
+      [taskId, localJobId]
     );
 
     res.json({
@@ -348,7 +411,89 @@ router.get('/status/:jobId', authMiddleware, async (req: AuthenticatedRequest, r
     // If job is still running, check ACE-Step status
     if (['pending', 'queued', 'running'].includes(job.status) && job.acestep_task_id) {
       try {
-        const aceStatus = await getJobStatus(job.acestep_task_id);
+        // Query 8001 API for task status
+        const queryResponse = await fetch(`${config.acestep.apiUrl}/query_result`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-api-key': process.env.ACESTEP_API_KEY || '',
+          },
+          body: JSON.stringify({
+            task_id_list: [job.acestep_task_id],
+          }),
+        });
+
+        if (!queryResponse.ok) {
+          throw new Error('Failed to query ACE-Step status');
+        }
+
+        const queryResult = await queryResponse.json();
+        
+        // Response format: { code: 200, data: [{ task_id, result, status }] }
+        const dataList = queryResult.data || queryResult.data_list || queryResult;
+        const taskData = Array.isArray(dataList) ? dataList[0] : null;
+
+        if (!taskData) {
+          console.error('Failed to parse task data. Full response:', JSON.stringify(queryResult, null, 2));
+          console.error('Looking for task_id:', job.acestep_task_id);
+          throw new Error(`No task data in response`);
+        }
+        
+        console.log('Task data:', JSON.stringify(taskData, null, 2));
+
+        // Map ACE-Step status codes to our status
+        const statusMap: Record<number, string> = {
+          0: 'running',
+          1: 'succeeded',
+          2: 'failed',
+        };
+        
+        // Parse result data
+        let resultData = null;
+        if (taskData.status === 1 && taskData.result) {
+          const parsedResults = JSON.parse(taskData.result);
+          const audioUrls: string[] = [];
+          let firstResult = null;
+          
+          // Process all results from batch
+          for (let i = 0; i < parsedResults.length; i++) {
+            const parsedResult = parsedResults[i];
+            if (i === 0) firstResult = parsedResult;
+            
+            // Convert path to full URL
+            let audioUrl = parsedResult.file;
+            console.log(`[Batch ${i + 1}/${parsedResults.length}] Original file path:`, audioUrl);
+            
+            if (audioUrl) {
+              if (audioUrl.startsWith('/v1/audio')) {
+                audioUrl = `${config.acestep.apiUrl}${audioUrl}`;
+                console.log(`[Batch ${i + 1}] Prepended domain to API path:`, audioUrl);
+              } else if (!audioUrl.startsWith('http')) {
+                audioUrl = `${config.acestep.apiUrl}/v1/audio?path=${encodeURIComponent(audioUrl)}`;
+                console.log(`[Batch ${i + 1}] Converted file path to API URL:`, audioUrl);
+              }
+              audioUrls.push(audioUrl);
+            }
+          }
+          
+          resultData = {
+            audioUrls,
+            duration: firstResult?.metas?.duration,
+            bpm: firstResult?.metas?.bpm,
+            keyScale: firstResult?.metas?.keyscale,
+            timeSignature: firstResult?.metas?.timesignature,
+            ditModel: firstResult?.dit_model,
+            status: 'succeeded',
+          };
+        }
+        
+        const aceStatus = {
+          status: statusMap[taskData.status] || 'running',
+          result: resultData,
+          error: taskData.status === 2 ? 'Generation failed' : undefined,
+          queuePosition: undefined,
+          etaSeconds: undefined,
+        };
 
         if (aceStatus.status !== job.status) {
           let updateQuery = `UPDATE generation_jobs SET status = ?, updated_at = datetime('now')`;
@@ -392,9 +537,9 @@ router.get('/status/:jobId', authMiddleware, async (req: AuthenticatedRequest, r
 
                 await pool.query(
                   `INSERT INTO songs (id, user_id, title, lyrics, style, caption, audio_url,
-                                      duration, bpm, key_scale, time_signature, tags, is_public, generation_params,
+                                      duration, bpm, key_scale, time_signature, tags, is_public, model, generation_params,
                                       created_at, updated_at)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, datetime('now'), datetime('now'))`,
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, datetime('now'), datetime('now'))`,
                   [
                     songId,
                     req.user!.id,
@@ -408,6 +553,7 @@ router.get('/status/:jobId', authMiddleware, async (req: AuthenticatedRequest, r
                     aceStatus.result.keyScale || params.keyScale,
                     aceStatus.result.timeSignature || params.timeSignature,
                     JSON.stringify([]),
+                    aceStatus.result.ditModel || params.ditModel || 'acestep-v15-sft',
                     JSON.stringify(params),
                   ]
                 );
@@ -418,9 +564,9 @@ router.get('/status/:jobId', authMiddleware, async (req: AuthenticatedRequest, r
                 // Still create song record with remote URL
                 await pool.query(
                   `INSERT INTO songs (id, user_id, title, lyrics, style, caption, audio_url,
-                                      duration, bpm, key_scale, time_signature, tags, is_public, generation_params,
+                                      duration, bpm, key_scale, time_signature, tags, is_public, model, generation_params,
                                       created_at, updated_at)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, datetime('now'), datetime('now'))`,
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, datetime('now'), datetime('now'))`,
                   [
                     songId,
                     req.user!.id,
@@ -434,6 +580,7 @@ router.get('/status/:jobId', authMiddleware, async (req: AuthenticatedRequest, r
                     aceStatus.result.keyScale || params.keyScale,
                     aceStatus.result.timeSignature || params.timeSignature,
                     JSON.stringify([]),
+                    aceStatus.result.ditModel || params.ditModel || 'acestep-v15-sft',
                     JSON.stringify(params),
                   ]
                 );
@@ -442,7 +589,6 @@ router.get('/status/:jobId', authMiddleware, async (req: AuthenticatedRequest, r
             }
 
             aceStatus.result.audioUrls = localPaths;
-            cleanupJob(job.acestep_task_id);
           }
         }
 
@@ -544,6 +690,27 @@ router.get('/history', authMiddleware, async (req: AuthenticatedRequest, res: Re
   }
 });
 
+router.get('/models', async (_req, res: Response) => {
+  try {
+    const modelsResponse = await fetch(`${config.acestep.apiUrl}/v1/models`, {
+      headers: {
+        'x-api-key': process.env.ACESTEP_API_KEY || '',
+      },
+    });
+
+    if (!modelsResponse.ok) {
+      res.status(modelsResponse.status).json({ error: 'Failed to fetch models' });
+      return;
+    }
+
+    const result = await modelsResponse.json();
+    res.json(result.data || result);
+  } catch (error) {
+    console.error('Models proxy error:', error);
+    res.status(500).json({ error: 'Failed to fetch models from backend' });
+  }
+});
+
 router.get('/endpoints', authMiddleware, async (_req: AuthenticatedRequest, res: Response) => {
   try {
     const endpoints = await discoverEndpoints();
@@ -631,6 +798,7 @@ router.get('/debug/:taskId', authMiddleware, async (req: AuthenticatedRequest, r
 });
 
 // Format endpoint - uses LLM to enhance style/lyrics
+// Strategy: try 8001 API first, fall back to local Python script
 router.post('/format', authMiddleware, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const { caption, lyrics, bpm, duration, keyScale, timeSignature, temperature, topK, topP, lmModel, lmBackend } = req.body;
@@ -640,6 +808,38 @@ router.post('/format', authMiddleware, async (req: AuthenticatedRequest, res: Re
       return;
     }
 
+    // Attempt 1: Call 8001 API format_input endpoint
+    try {
+      const formatResponse = await fetch(`${config.acestep.apiUrl}/format_input`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-api-key': process.env.ACESTEP_API_KEY || '',
+        },
+        body: JSON.stringify({
+          caption,
+          lyrics: lyrics || '',
+          bpm: bpm || 0,
+          duration: duration || 0,
+          key_scale: keyScale || '',
+          time_signature: timeSignature || '',
+          temperature: temperature,
+          top_k: topK,
+          top_p: topP,
+        }),
+      });
+
+      if (formatResponse.ok) {
+        const result = await formatResponse.json();
+        res.json(result.data || result);
+        return;
+      }
+      console.warn(`[Format] API returned ${formatResponse.status}, falling back to Python script`);
+    } catch (apiError) {
+      console.warn('[Format] API unavailable, falling back to Python script:', (apiError as Error).message);
+    }
+
+    // Attempt 2: Fall back to local Python script
     const { spawn } = await import('child_process');
 
     const ACESTEP_DIR = process.env.ACESTEP_PATH || path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../../../ACE-Step-1.5');
@@ -666,8 +866,6 @@ router.post('/format', authMiddleware, async (req: AuthenticatedRequest, res: Re
     if (lmModel) args.push('--lm-model', lmModel);
     if (lmBackend) args.push('--lm-backend', lmBackend);
 
-    console.log(`[Format] Running: ${pythonPath} ${args.join(' ')}`);
-    console.log(`[Format] CWD: ${ACESTEP_DIR}`);
     const result = await new Promise<{ success: boolean; data?: any; error?: string }>((resolve) => {
       const proc = spawn(pythonPath, args, {
         cwd: ACESTEP_DIR,
@@ -685,7 +883,6 @@ router.post('/format', authMiddleware, async (req: AuthenticatedRequest, res: Re
 
       proc.on('close', (code) => {
         if (code === 0 && stdout) {
-          // stdout may contain log lines before the JSON — extract last JSON line
           const lines = stdout.trim().split('\n');
           let jsonStr = '';
           for (let i = lines.length - 1; i >= 0; i--) {

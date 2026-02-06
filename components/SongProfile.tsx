@@ -2,8 +2,10 @@ import React, { useState, useEffect } from 'react';
 import { Song } from '../types';
 import { songsApi, getAudioUrl } from '../services/api';
 import { useAuth } from '../context/AuthContext';
+import { useI18n } from '../context/I18nContext';
 import { ArrowLeft, Play, Pause, Heart, Share2, MoreHorizontal, ThumbsDown, Music as MusicIcon, Edit3, Eye } from 'lucide-react';
 import { ShareModal } from './ShareModal';
+import { SongDropdownMenu } from './SongDropdownMenu';
 
 interface SongProfileProps {
     songId: string;
@@ -14,6 +16,7 @@ interface SongProfileProps {
     isPlaying?: boolean;
     likedSongIds?: Set<string>;
     onToggleLike?: (songId: string) => void;
+    onDelete?: (song: Song) => void;
 }
 
 const updateMetaTags = (song: Song) => {
@@ -79,11 +82,13 @@ const resetMetaTags = () => {
     updateMeta('meta[name="twitter:image"]', defaultImage);
 };
 
-export const SongProfile: React.FC<SongProfileProps> = ({ songId, onBack, onPlay, onNavigateToProfile, currentSong, isPlaying, likedSongIds = new Set(), onToggleLike }) => {
+export const SongProfile: React.FC<SongProfileProps> = ({ songId, onBack, onPlay, onNavigateToProfile, currentSong, isPlaying, likedSongIds = new Set(), onToggleLike, onDelete }) => {
     const { user, token } = useAuth();
+    const { t } = useI18n();
     const [song, setSong] = useState<Song | null>(null);
     const [loading, setLoading] = useState(true);
     const [shareModalOpen, setShareModalOpen] = useState(false);
+    const [showDropdown, setShowDropdown] = useState(false);
 
     const isCurrentSong = song && currentSong?.id === song.id;
     const isCurrentlyPlaying = isCurrentSong && isPlaying;
@@ -138,7 +143,7 @@ export const SongProfile: React.FC<SongProfileProps> = ({ songId, onBack, onPlay
             <div className="flex items-center justify-center h-full bg-zinc-50 dark:bg-black">
                 <div className="text-zinc-500 dark:text-zinc-400 flex items-center gap-2">
                     <div className="w-4 h-4 border-2 border-zinc-400 border-t-transparent rounded-full animate-spin" />
-                    Loading song...
+                    {t('loadingSong')}
                 </div>
             </div>
         );
@@ -147,9 +152,9 @@ export const SongProfile: React.FC<SongProfileProps> = ({ songId, onBack, onPlay
     if (!song) {
         return (
             <div className="flex flex-col items-center justify-center h-full gap-4 bg-zinc-50 dark:bg-black">
-                <div className="text-zinc-500 dark:text-zinc-400">Song not found</div>
+                <div className="text-zinc-500 dark:text-zinc-400">{t('songNotFound')}</div>
                 <button onClick={onBack} className="px-4 py-2 bg-zinc-200 dark:bg-zinc-800 hover:bg-zinc-300 dark:hover:bg-zinc-700 rounded-lg text-zinc-900 dark:text-white transition-colors">
-                    Go Back
+                    {t('goBack')}
                 </button>
             </div>
         );
@@ -164,7 +169,7 @@ export const SongProfile: React.FC<SongProfileProps> = ({ songId, onBack, onPlay
                     className="flex items-center gap-2 text-zinc-500 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-white mb-4 transition-colors"
                 >
                     <ArrowLeft size={20} />
-                    <span>Back</span>
+                    <span>{t('back')}</span>
                 </button>
 
                 <div className="flex flex-col md:flex-row md:items-start justify-between gap-4">
@@ -220,7 +225,7 @@ export const SongProfile: React.FC<SongProfileProps> = ({ songId, onBack, onPlay
 
             {/* Content */}
             <div className="flex-1 overflow-y-auto">
-                <div className="max-w-3xl mx-auto px-4 md:px-6 py-4 md:py-6">
+                <div className="max-w-3xl mx-auto px-4 md:px-6 py-4 md:py-6 pb-24 lg:pb-32">
 
                     {/* Left Column: Song Details */}
                     <div className="space-y-4 md:space-y-6">
@@ -281,9 +286,26 @@ export const SongProfile: React.FC<SongProfileProps> = ({ songId, onBack, onPlay
                             >
                                 <Share2 size={16} className="text-zinc-700 dark:text-white" />
                             </button>
-                            <button className="p-2 bg-zinc-200 dark:bg-zinc-900 hover:bg-zinc-300 dark:hover:bg-zinc-800 rounded-full transition-colors">
-                                <MoreHorizontal size={16} className="text-zinc-700 dark:text-white" />
-                            </button>
+                            <div className="relative">
+                                <button
+                                    onClick={() => setShowDropdown(!showDropdown)}
+                                    className="p-2 bg-zinc-200 dark:bg-zinc-900 hover:bg-zinc-300 dark:hover:bg-zinc-800 rounded-full transition-colors"
+                                >
+                                    <MoreHorizontal size={16} className="text-zinc-700 dark:text-white" />
+                                </button>
+                                {song && (
+                                    <SongDropdownMenu
+                                        song={song}
+                                        isOpen={showDropdown}
+                                        onClose={() => setShowDropdown(false)}
+                                        isOwner={user?.id === song.userId}
+                                        onReusePrompt={() => {}}
+                                        onAddToPlaylist={() => {}}
+                                        onDelete={() => onDelete?.(song)}
+                                        onShare={() => setShareModalOpen(true)}
+                                    />
+                                )}
+                            </div>
                         </div>
 
                         {/* Lyrics */}

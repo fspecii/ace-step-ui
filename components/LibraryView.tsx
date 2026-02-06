@@ -5,6 +5,7 @@ import { useAuth } from '../context/AuthContext';
 import { SongDropdownMenu } from './SongDropdownMenu';
 import { ShareModal } from './ShareModal';
 import { AlbumCover } from './AlbumCover';
+import { useI18n } from '../context/I18nContext';
 
 interface LibraryViewProps {
   allSongs: Song[];
@@ -46,6 +47,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
     onDeleteSong,
     onDeleteReferenceTrack,
 }) => {
+    const { t } = useI18n();
     const { user } = useAuth();
     const [activeTab, setActiveTab] = useState<'all' | 'playlists' | 'liked' | 'uploads'>('all');
     const [shareModalOpen, setShareModalOpen] = useState(false);
@@ -67,13 +69,13 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
         <>
         <div className="flex-1 bg-white dark:bg-black overflow-y-auto custom-scrollbar p-6 lg:p-10 pb-32 transition-colors duration-300">
              <div className="flex items-center justify-between mb-8">
-                <h1 className="text-3xl font-bold text-zinc-900 dark:text-white">Your Library</h1>
+                <h1 className="text-3xl font-bold text-zinc-900 dark:text-white">{t('yourLibrary')}</h1>
                 <button 
                     onClick={onCreatePlaylist}
                     className="flex items-center gap-2 bg-zinc-900 dark:bg-zinc-800 hover:bg-zinc-800 dark:hover:bg-zinc-700 text-white px-4 py-2 rounded-full font-medium transition-colors shadow-lg shadow-zinc-900/10 dark:shadow-none"
                 >
                     <Plus size={18} />
-                    <span>New Playlist</span>
+                    <span>{t('newPlaylist')}</span>
                 </button>
              </div>
 
@@ -90,14 +92,14 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                     onClick={() => setActiveTab('liked')}
                     className={`pb-3 text-sm font-bold transition-colors relative ${activeTab === 'liked' ? 'text-zinc-900 dark:text-white' : 'text-zinc-500 hover:text-zinc-900 dark:hover:text-white'}`}
                  >
-                    Liked Songs
+                    {t('likedSongs')}
                     {activeTab === 'liked' && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-green-500 rounded-full"></div>}
                  </button>
                  <button 
                     onClick={() => setActiveTab('playlists')}
                     className={`pb-3 text-sm font-bold transition-colors relative ${activeTab === 'playlists' ? 'text-zinc-900 dark:text-white' : 'text-zinc-500 hover:text-zinc-900 dark:hover:text-white'}`}
                  >
-                    Playlists
+                    {t('playlists')}
                     {activeTab === 'playlists' && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-green-500 rounded-full"></div>}
                  </button>
                  <button 
@@ -168,10 +170,10 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                             <Heart fill="white" size={64} className="text-white" />
                          </div>
                          <div className="mb-2">
-                             <h2 className="text-sm font-bold uppercase text-zinc-500 dark:text-white mb-2">Playlist</h2>
-                             <h1 className="text-5xl font-extrabold text-zinc-900 dark:text-white mb-4">Liked Songs</h1>
+                             <h2 className="text-sm font-bold uppercase text-zinc-500 dark:text-white mb-2">{t('playlist')}</h2>
+                             <h1 className="text-5xl font-extrabold text-zinc-900 dark:text-white mb-4">{t('likedSongs')}</h1>
                              <div className="text-sm text-zinc-500 dark:text-zinc-300 font-medium">
-                                 {likedSongs.length} songs
+                                 {likedSongs.length} {t('songs')}
                              </div>
                          </div>
                          <div className="ml-auto mb-2 opacity-0 group-hover:opacity-100 transition-opacity">
@@ -241,7 +243,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                                  )}
                              </div>
                              <h3 className="font-bold text-zinc-900 dark:text-white truncate">{playlist.name}</h3>
-                             <p className="text-sm text-zinc-500 dark:text-zinc-400 line-clamp-2">{playlist.description || `By You`}</p>
+                             <p className="text-sm text-zinc-500 dark:text-zinc-400 line-clamp-2">{playlist.description || t('byYou')}</p>
                          </div>
                      ))}
                  </div>

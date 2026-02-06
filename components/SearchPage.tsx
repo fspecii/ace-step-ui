@@ -2,6 +2,8 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Search, Play, Pause, Heart, ChevronRight, ChevronLeft, Copy, Check, X, Loader2 } from 'lucide-react';
 import { Song, Playlist } from '../types';
 import { songsApi, usersApi, playlistsApi, searchApi, UserProfile, getAudioUrl } from '../services/api';
+import { useI18n } from '../context/I18nContext';
+import { GENRE_KEYS } from '../data/genres';
 
 interface SearchPageProps {
   onPlaySong?: (song: Song, list?: Song[]) => void;
@@ -12,15 +14,6 @@ interface SearchPageProps {
   onNavigateToPlaylist?: (playlistId: string) => void;
 }
 
-const GENRES = [
-  'Pop', 'Rock', 'Electronic', 'Hip Hop', 'Country', 'Latin', 'Heavy Metal', 'Disco',
-  'K-Pop', 'EDM', 'R&B', 'Indie', 'Folk', 'Funk', 'Jazz', 'Alternative Pop',
-  'House', 'Afrobeats', 'Reggaeton', 'Rap', 'Blues', 'Gospel', 'Reggae',
-  'Synthwave', 'J-Pop', 'Punk', 'Soul', 'Techno', 'Classical', 'Bossa Nova',
-  'Ska', 'Bluegrass', 'Indie Surf', 'Lo-Fi Beats', 'Trap', 'Grunge', 'Chillhop',
-  'New Wave', 'Drum And Bass', 'Acoustic Cover', 'Cinematic Dubstep', 'Modern Bollywood',
-  'Opera', 'Ambient', 'Focus', 'A Capella', 'Meditation', 'Sleep'
-];
 
 const MAX_RESULTS = 20;
 
@@ -36,6 +29,7 @@ export const SearchPage: React.FC<SearchPageProps> = ({
   onNavigateToSong,
   onNavigateToPlaylist,
 }) => {
+  const { t } = useI18n();
   const [searchQuery, setSearchQuery] = useState('');
   const [featuredSongs, setFeaturedSongs] = useState<ExtendedSong[]>([]);
   const [featuredCreators, setFeaturedCreators] = useState<Array<UserProfile & { song_count?: number }>>([]);
@@ -203,14 +197,14 @@ export const SearchPage: React.FC<SearchPageProps> = ({
 
   return (
     <div className="flex-1 bg-zinc-50 dark:bg-[#0a0a0a] h-full overflow-y-auto custom-scrollbar">
-      <div className="max-w-[1400px] mx-auto px-6 py-6">
+      <div className="max-w-[1400px] mx-auto px-6 py-6 pb-24 lg:pb-32">
         {/* Search Input */}
         <div className="mb-8">
           <div className="relative max-w-3xl">
             <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-zinc-400" size={20} />
             <input
               type="text"
-              placeholder="Search for songs, playlists, creators, or genres"
+              placeholder={t('searchSongsPlaceholder')}
               value={searchQuery}
               onChange={(e) => handleSearchChange(e.target.value)}
               className="w-full h-11 pl-12 pr-12 bg-white dark:bg-zinc-900/80 border border-zinc-200 dark:border-white/10 rounded-full text-zinc-900 dark:text-white placeholder-zinc-400 focus:outline-none focus:border-pink-500 dark:focus:border-pink-500 focus:ring-2 focus:ring-pink-500/20 transition-all"
@@ -232,7 +226,7 @@ export const SearchPage: React.FC<SearchPageProps> = ({
         <section className="mb-10">
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-lg font-bold text-zinc-900 dark:text-white">
-              {isSearching ? `Songs matching "${searchQuery}"` : 'Featured Songs'}
+              {isSearching ? `${t('songsMatching')} "${searchQuery}"` : t('featuredSongs')}
               {isSearching && displaySongs.length > 0 && (
                 <span className="ml-2 text-sm font-normal text-zinc-500">({displaySongs.length})</span>
               )}
@@ -278,7 +272,7 @@ export const SearchPage: React.FC<SearchPageProps> = ({
             </div>
           ) : isSearching ? (
             <div className="text-center py-8 text-zinc-500 text-sm">
-              No songs found matching "{searchQuery}"
+              {t('noSongsFound')} "{searchQuery}"
             </div>
           ) : null}
         </section>
@@ -287,7 +281,7 @@ export const SearchPage: React.FC<SearchPageProps> = ({
         <section className="mb-10">
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-lg font-bold text-zinc-900 dark:text-white">
-              {isSearching ? `Creators matching "${searchQuery}"` : 'Featured Creators'}
+              {isSearching ? `${t('creatorsMatching')} "${searchQuery}"` : t('featuredCreators')}
               {isSearching && displayCreators.length > 0 && (
                 <span className="ml-2 text-sm font-normal text-zinc-500">({displayCreators.length})</span>
               )}
@@ -337,7 +331,7 @@ export const SearchPage: React.FC<SearchPageProps> = ({
             </div>
           ) : (
             <div className="text-center py-8 text-zinc-500 text-sm">
-              {isSearching ? `No creators found matching "${searchQuery}"` : 'No creators yet. Be the first to share your music!'}
+              {isSearching ? `${t('noCreatorsFound')} "${searchQuery}"` : t('noCreatorsYet')}
             </div>
           )}
         </section>
@@ -346,7 +340,7 @@ export const SearchPage: React.FC<SearchPageProps> = ({
         <section className="mb-10">
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-lg font-bold text-zinc-900 dark:text-white">
-              {isSearching ? `Playlists matching "${searchQuery}"` : 'Featured Playlists'}
+              {isSearching ? `${t('playlistsMatching')} "${searchQuery}"` : t('featuredPlaylists')}
               {isSearching && displayPlaylists.length > 0 && (
                 <span className="ml-2 text-sm font-normal text-zinc-500">({displayPlaylists.length})</span>
               )}
@@ -393,39 +387,43 @@ export const SearchPage: React.FC<SearchPageProps> = ({
                   playlist={playlist}
                   onNavigateToPlaylist={onNavigateToPlaylist}
                   onNavigateToProfile={onNavigateToProfile}
+                  t={t}
                 />
               ))}
             </div>
           ) : (
             <div className="text-center py-8 text-zinc-500 text-sm">
-              {isSearching ? `No playlists found matching "${searchQuery}"` : 'No public playlists yet. Create one and share your favorites!'}
+              {isSearching ? `${t('noPlaylistsFound')} "${searchQuery}"` : t('noPlaylistsYet')}
             </div>
           )}
         </section>
 
         {/* Genres */}
         <section className="mb-10">
-          <h2 className="text-lg font-bold text-zinc-900 dark:text-white mb-4">Genres</h2>
+          <h2 className="text-lg font-bold text-zinc-900 dark:text-white mb-4">{t('genres')}</h2>
           <div className="flex flex-wrap gap-2">
-            {GENRES.map((genre) => (
-              <button
-                key={genre}
-                onClick={() => handleGenreClick(genre)}
-                className={`px-3 py-1.5 border rounded-full text-sm transition-all duration-200 group flex items-center gap-1.5 ${
-                  searchQuery === genre
-                    ? 'bg-pink-500 border-pink-500 text-white'
-                    : 'bg-zinc-100 dark:bg-zinc-800/60 border-zinc-200 dark:border-white/5 text-zinc-600 dark:text-zinc-300 hover:bg-zinc-200 dark:hover:bg-zinc-700/60 hover:border-pink-500/30 hover:text-pink-600 dark:hover:text-pink-400'
-                }`}
-              >
-                {genre}
-                <Copy
-                  size={12}
-                  className={`opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer ${searchQuery === genre ? 'text-white/70' : ''}`}
-                  onClick={(e) => { e.stopPropagation(); handleCopyTag(genre); }}
-                />
-                {copiedTag === genre && <Check size={12} className="text-green-500" />}
-              </button>
-            ))}
+            {GENRE_KEYS.map((genreKey) => {
+              const genreLabel = t(genreKey);
+              return (
+                <button
+                  key={genreKey}
+                  onClick={() => handleGenreClick(genreLabel)}
+                  className={`px-3 py-1.5 border rounded-full text-sm transition-all duration-200 group flex items-center gap-1.5 ${
+                    searchQuery === genreLabel
+                      ? 'bg-pink-500 border-pink-500 text-white'
+                      : 'bg-zinc-100 dark:bg-zinc-800/60 border-zinc-200 dark:border-white/5 text-zinc-600 dark:text-zinc-300 hover:bg-zinc-200 dark:hover:bg-zinc-700/60 hover:border-pink-500/30 hover:text-pink-600 dark:hover:text-pink-400'
+                  }`}
+                >
+                  {genreLabel}
+                  <Copy
+                    size={12}
+                    className={`opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer ${searchQuery === genreLabel ? 'text-white/70' : ''}`}
+                    onClick={(e) => { e.stopPropagation(); handleCopyTag(genreLabel); }}
+                  />
+                  {copiedTag === genreLabel && <Check size={12} className="text-green-500" />}
+                </button>
+              );
+            })}
           </div>
         </section>
       </div>
@@ -562,12 +560,14 @@ interface PlaylistCardProps {
   playlist: Playlist & { creator?: string; creator_avatar?: string; song_count?: number };
   onNavigateToPlaylist?: (playlistId: string) => void;
   onNavigateToProfile?: (username: string) => void;
+  t: (key: string) => string;
 }
 
 const PlaylistCard: React.FC<PlaylistCardProps> = ({
   playlist,
   onNavigateToPlaylist,
   onNavigateToProfile,
+  t,
 }) => {
   return (
     <div
@@ -585,7 +585,7 @@ const PlaylistCard: React.FC<PlaylistCardProps> = ({
       <div className="font-semibold text-zinc-900 dark:text-white text-sm truncate group-hover:text-pink-500 transition-colors">
         {playlist.name}
       </div>
-      <div className="text-[11px] text-zinc-500 mb-1">{playlist.song_count || 0} songs</div>
+      <div className="text-[11px] text-zinc-500 mb-1">{playlist.song_count || 0} {t('songs')}</div>
       {playlist.creator && (
         <div
           className="flex items-center gap-1.5 cursor-pointer"

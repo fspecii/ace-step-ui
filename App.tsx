@@ -11,17 +11,23 @@ import { UsernameModal } from './components/UsernameModal';
 import { UserProfile } from './components/UserProfile';
 import { SettingsModal } from './components/SettingsModal';
 import { SongProfile } from './components/SongProfile';
+import { TrainingPanel } from './components/TrainingPanel';
 import { Song, GenerationParams, View, Playlist } from './types';
 import { generateApi, songsApi, playlistsApi, getAudioUrl } from './services/api';
 import { useAuth } from './context/AuthContext';
 import { useResponsive } from './context/ResponsiveContext';
+import { I18nProvider, useI18n } from './context/I18nContext';
 import { List } from 'lucide-react';
 import { PlaylistDetail } from './components/PlaylistDetail';
 import { Toast, ToastType } from './components/Toast';
 import { SearchPage } from './components/SearchPage';
+import { ConfirmDialog } from './components/ConfirmDialog';
 
 
-export default function App() {
+function AppContent() {
+  // i18n
+  const { t } = useI18n();
+
   // Responsive
   const { isMobile, isDesktop } = useResponsive();
 
@@ -59,13 +65,18 @@ export default function App() {
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
-  const [volume, setVolume] = useState(0.8);
+  const [volume, setVolume] = useState(() => {
+    const stored = localStorage.getItem('volume');
+    return stored ? parseFloat(stored) : 0.8;
+  });
+  const [playbackRate, setPlaybackRate] = useState(1.0);
   const [isShuffle, setIsShuffle] = useState(false);
-  const [repeatMode, setRepeatMode] = useState<'none' | 'all' | 'one'>('all');
+  const [repeatMode, setRepeatMode] = useState<'none' | 'all' | 'one'>('none');
 
   // UI State
   const [isGenerating, setIsGenerating] = useState(false);
   const [showRightSidebar, setShowRightSidebar] = useState(true);
+  const [showLeftSidebar, setShowLeftSidebar] = useState(false);
   const [pendingAudioSelection, setPendingAudioSelection] = useState<{ target: 'reference' | 'source'; url: string; title?: string } | null>(null);
 
   // Mobile UI Toggle
@@ -96,6 +107,7 @@ export default function App() {
   const [reuseData, setReuseData] = useState<{ song: Song, timestamp: number } | null>(null);
 
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const currentSongIdRef = useRef<string | null>(null);
   const pendingSeekRef = useRef<number | null>(null);
   const playNextRef = useRef<() => void>(() => {});
 
@@ -108,6 +120,13 @@ export default function App() {
     type: 'success',
     isVisible: false,
   });
+
+  // Confirm Dialog State
+  const [confirmDialog, setConfirmDialog] = useState<{
+    title: string;
+    message: string;
+    onConfirm: () => void;
+  } | null>(null);
 
   interface ReferenceTrack {
     id: string;
@@ -172,6 +191,9 @@ export default function App() {
   // Song Update Handler
   const handleSongUpdate = (updatedSong: Song) => {
     setSongs(prev => prev.map(s => s.id === updatedSong.id ? updatedSong : s));
+    if (currentSong?.id === updatedSong.id) {
+      setCurrentSong(updatedSong);
+    }
     if (selectedSong?.id === updatedSong.id) {
       setSelectedSong(updatedSong);
     }
@@ -239,6 +261,8 @@ export default function App() {
         setMobileShowList(false);
       } else if (path === '/library') {
         setCurrentView('library');
+      } else if (path === '/training') {
+        setCurrentView('training');
       } else if (path.startsWith('/@')) {
         const username = path.substring(2);
         if (username) {
@@ -294,6 +318,7 @@ export default function App() {
           viewCount: s.view_count || 0,
           userId: s.user_id,
           creator: s.creator,
+          ditModel: s.ditModel,
           generationParams: (() => {
             try {
               if (!s.generation_params) return undefined;
@@ -464,9 +489,9 @@ export default function App() {
       if (audio.error && audio.error.code !== 1) {
         console.error("Audio playback error:", audio.error);
         if (audio.error.code === 4) {
-          showToast('This song is no longer available.', 'error');
+          showToast(t('songNotAvailable'), 'error');
         } else {
-          showToast('Unable to play this song.', 'error');
+          showToast(t('unableToPlay'), 'error');
         }
       }
       setIsPlaying(false);
@@ -502,14 +527,15 @@ export default function App() {
         if (err instanceof Error && err.name !== 'AbortError') {
           console.error("Playback failed:", err);
           if (err.name === 'NotSupportedError') {
-            showToast('This song is no longer available.', 'error');
+            showToast(t('songNotAvailable'), 'error');
           }
           setIsPlaying(false);
         }
       }
     };
 
-    if (audio.src !== currentSong.audioUrl) {
+    if (currentSongIdRef.current !== currentSong.id) {
+      currentSongIdRef.current = currentSong.id;
       audio.src = currentSong.audioUrl;
       audio.load();
       if (isPlaying) playAudio();
@@ -525,6 +551,13 @@ export default function App() {
       audioRef.current.volume = volume;
     }
   }, [volume]);
+
+  // Handle Playback Rate
+  useEffect(() => {
+    if (audioRef.current) {
+      audioRef.current.playbackRate = playbackRate;
+    }
+  }, [playbackRate]);
 
   // Helper to cleanup a job and check if all jobs are done
   const cleanupJob = useCallback((jobId: string, tempId: string) => {
@@ -566,6 +599,7 @@ export default function App() {
         viewCount: s.view_count || 0,
         userId: s.user_id,
         creator: s.creator,
+        ditModel: s.ditModel,
         generationParams: (() => {
           try {
             if (!s.generation_params) return undefined;
@@ -701,6 +735,7 @@ export default function App() {
         lyrics: params.lyrics,
         style: params.style,
         title: params.title,
+        ditModel: params.ditModel,
         instrumental: params.instrumental,
         vocalLanguage: params.vocalLanguage,
         duration: params.duration && params.duration > 0 ? params.duration : undefined,
@@ -762,7 +797,7 @@ export default function App() {
       if (activeJobsRef.current.size === 0) {
         setIsGenerating(false);
       }
-      showToast('Generation failed. Please try again.', 'error');
+      showToast(t('generationFailed'), 'error');
     }
   };
 
@@ -904,127 +939,99 @@ export default function App() {
     }
   };
 
-  const handleDeleteSong = async (song: Song) => {
-    if (!token) return;
-
-    // Show confirmation dialog
-    const confirmed = window.confirm(
-      `Are you sure you want to delete "${song.title}"? This action cannot be undone.`
-    );
-
-    if (!confirmed) return;
-
-    try {
-      // Call API to delete song
-      await songsApi.deleteSong(song.id, token);
-
-      // Remove from songs list
-      setSongs(prev => prev.filter(s => s.id !== song.id));
-
-      // Remove from liked songs if it was liked
-      setLikedSongIds(prev => {
-        const next = new Set(prev);
-        next.delete(song.id);
-        return next;
-      });
-
-      // Handle if deleted song is currently selected
-      if (selectedSong?.id === song.id) {
-        setSelectedSong(null);
-      }
-
-      // Handle if deleted song is currently playing
-      if (currentSong?.id === song.id) {
-        setCurrentSong(null);
-        setIsPlaying(false);
-        if (audioRef.current) {
-          audioRef.current.pause();
-          audioRef.current.src = '';
-        }
-      }
-
-      // Remove from play queue if present
-      setPlayQueue(prev => prev.filter(s => s.id !== song.id));
-
-      showToast('Song deleted successfully');
-    } catch (error) {
-      console.error('Failed to delete song:', error);
-      showToast('Failed to delete song', 'error');
-    }
+  const handleDeleteSong = (song: Song) => {
+    handleDeleteSongs([song]);
   };
 
-  const handleDeleteSongs = async (songsToDelete: Song[]) => {
+  const handleDeleteSongs = (songsToDelete: Song[]) => {
     if (!token || songsToDelete.length === 0) return;
 
-    const confirmed = window.confirm(
-      `Delete ${songsToDelete.length} songs? This action cannot be undone.`
-    );
-    if (!confirmed) return;
+    const isSingle = songsToDelete.length === 1;
+    const title = isSingle ? t('confirmDeleteTitle') : t('confirmDeleteManyTitle');
+    const message = isSingle
+      ? t('deleteSongConfirm').replace('{title}', songsToDelete[0].title)
+      : t('deleteSongsConfirm').replace('{count}', String(songsToDelete.length));
 
-    const idsToDelete = new Set(songsToDelete.map(song => song.id));
-    const succeeded: string[] = [];
-    const failed: string[] = [];
+    setConfirmDialog({
+      title,
+      message,
+      onConfirm: async () => {
+        setConfirmDialog(null);
 
-    for (const song of songsToDelete) {
-      try {
-        await songsApi.deleteSong(song.id, token);
-        succeeded.push(song.id);
-      } catch (error) {
-        console.error('Failed to delete song:', error);
-        failed.push(song.id);
-      }
-    }
+        const idsToDelete = new Set(songsToDelete.map(song => song.id));
+        const succeeded: string[] = [];
+        const failed: string[] = [];
 
-    if (succeeded.length > 0) {
-      setSongs(prev => prev.filter(s => !idsToDelete.has(s.id) || failed.includes(s.id)));
-
-      setLikedSongIds(prev => {
-        const next = new Set(prev);
-        succeeded.forEach(id => next.delete(id));
-        return next;
-      });
-
-      if (selectedSong?.id && succeeded.includes(selectedSong.id)) {
-        setSelectedSong(null);
-      }
-
-      if (currentSong?.id && succeeded.includes(currentSong.id)) {
-        setCurrentSong(null);
-        setIsPlaying(false);
-        if (audioRef.current) {
-          audioRef.current.pause();
-          audioRef.current.src = '';
+        for (const song of songsToDelete) {
+          try {
+            await songsApi.deleteSong(song.id, token!);
+            succeeded.push(song.id);
+          } catch (error) {
+            console.error('Failed to delete song:', error);
+            failed.push(song.id);
+          }
         }
-      }
 
-      setPlayQueue(prev => prev.filter(s => !idsToDelete.has(s.id) || failed.includes(s.id)));
-    }
+        if (succeeded.length > 0) {
+          setSongs(prev => prev.filter(s => !idsToDelete.has(s.id) || failed.includes(s.id)));
 
-    if (failed.length > 0) {
-      showToast(`Deleted ${succeeded.length}/${songsToDelete.length} songs`, 'error');
-    } else {
-      showToast('Songs deleted successfully');
-    }
+          setLikedSongIds(prev => {
+            const next = new Set(prev);
+            succeeded.forEach(id => next.delete(id));
+            return next;
+          });
+
+          if (selectedSong?.id && succeeded.includes(selectedSong.id)) {
+            setSelectedSong(null);
+          }
+
+          if (currentSong?.id && succeeded.includes(currentSong.id)) {
+            setCurrentSong(null);
+            setIsPlaying(false);
+            if (audioRef.current) {
+              audioRef.current.pause();
+              audioRef.current.src = '';
+            }
+          }
+
+          setPlayQueue(prev => prev.filter(s => !idsToDelete.has(s.id) || failed.includes(s.id)));
+        }
+
+        if (failed.length > 0) {
+          showToast(t('songsDeletedPartial').replace('{succeeded}', String(succeeded.length)).replace('{total}', String(songsToDelete.length)), 'error');
+        } else if (isSingle) {
+          showToast(t('songDeleted'));
+        } else {
+          showToast(t('songsDeletedSuccess'));
+        }
+      },
+    });
   };
 
-  const handleDeleteReferenceTrack = async (trackId: string) => {
+  const handleDeleteReferenceTrack = (trackId: string) => {
     if (!token) return;
-    const confirmed = window.confirm('Delete this upload? This action cannot be undone.');
-    if (!confirmed) return;
-    try {
-      const response = await fetch(`/api/reference-tracks/${trackId}`, {
-        method: 'DELETE',
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      if (!response.ok) {
-        throw new Error('Failed to delete upload');
-      }
-      setReferenceTracks(prev => prev.filter(track => track.id !== trackId));
-      showToast('Upload deleted successfully');
-    } catch (error) {
-      console.error('Failed to delete upload:', error);
-      showToast('Failed to delete upload', 'error');
-    }
+
+    setConfirmDialog({
+      title: t('delete'),
+      message: t('deleteUploadConfirm'),
+      onConfirm: async () => {
+        setConfirmDialog(null);
+        try {
+          const response = await fetch(`/api/reference-tracks/${trackId}`, {
+            method: 'DELETE',
+            headers: { Authorization: `Bearer ${token!}` }
+          });
+          if (!response.ok) {
+            throw new Error('Failed to delete upload');
+          }
+          setReferenceTracks(prev => prev.filter(track => track.id !== trackId));
+          showToast(t('songDeleted'));
+        } catch (error) {
+          console.error('Failed to delete upload:', error);
+          showToast(t('failedToDeleteSong'), 'error');
+        }
+      },
+    });
   };
 
   const createPlaylist = async (name: string, description: string) => {
@@ -1038,10 +1045,10 @@ export default function App() {
         setSongToAddToPlaylist(null);
         playlistsApi.getMyPlaylists(token).then(r => setPlaylists(r.playlists));
       }
-      showToast('Playlist created successfully!');
+      showToast(t('playlistCreated'));
     } catch (error) {
       console.error('Create playlist error:', error);
-      showToast('Failed to create playlist', 'error');
+      showToast(t('failedToCreatePlaylist'), 'error');
     }
   };
 
@@ -1055,11 +1062,11 @@ export default function App() {
     try {
       await playlistsApi.addSong(playlistId, songToAddToPlaylist.id, token);
       setSongToAddToPlaylist(null);
-      showToast('Song added to playlist');
+      showToast(t('songAddedToPlaylist'));
       playlistsApi.getMyPlaylists(token).then(r => setPlaylists(r.playlists));
     } catch (error) {
       console.error('Add song error:', error);
-      showToast('Failed to add song to playlist', 'error');
+      showToast(t('failedToAddSong'), 'error');
     }
   };
 
@@ -1193,6 +1200,7 @@ export default function App() {
             isPlaying={isPlaying}
             likedSongIds={likedSongIds}
             onToggleLike={toggleLike}
+            onDelete={handleDeleteSong}
           />
         );
 
@@ -1207,6 +1215,9 @@ export default function App() {
             onNavigateToPlaylist={handleNavigateToPlaylist}
           />
         );
+
+      case 'training':
+        return <TrainingPanel />;
 
       case 'create':
       default:
@@ -1256,6 +1267,7 @@ export default function App() {
                 onCoverSong={handleCoverSong}
                 onUseUploadAsReference={handleUseUploadAsReference}
                 onCoverUpload={handleCoverUpload}
+                onSongUpdate={handleSongUpdate}
               />
             </div>
 
@@ -1272,9 +1284,6 @@ export default function App() {
                   onNavigateToSong={handleNavigateToSong}
                   isLiked={selectedSong ? likedSongIds.has(selectedSong.id) : false}
                   onToggleLike={toggleLike}
-                  onPlay={playSong}
-                  isPlaying={isPlaying}
-                  currentSong={currentSong}
                   onDelete={handleDeleteSong}
                 />
               </div>
@@ -1286,7 +1295,7 @@ export default function App() {
                 onClick={() => setMobileShowList(!mobileShowList)}
                 className="bg-zinc-800 text-white px-4 py-2 rounded-full shadow-lg border border-white/10 flex items-center gap-2 text-sm font-bold"
               >
-                {mobileShowList ? 'Create Song' : 'View List'}
+                {mobileShowList ? t('createSong') : t('viewList')}
                 <List size={16} />
               </button>
             </div>
@@ -1309,7 +1318,10 @@ export default function App() {
               window.history.pushState({}, '', '/library');
             } else if (v === 'search') {
               window.history.pushState({}, '', '/search');
+            } else if (v === 'training') {
+              window.history.pushState({}, '', '/training');
             }
+            if (isMobile) setShowLeftSidebar(false);
           }}
           theme={theme}
           onToggleTheme={toggleTheme}
@@ -1317,6 +1329,8 @@ export default function App() {
           onLogin={() => setShowUsernameModal(true)}
           onLogout={logout}
           onOpenSettings={() => setShowSettingsModal(true)}
+          isOpen={showLeftSidebar}
+          onToggle={() => setShowLeftSidebar(!showLeftSidebar)}
         />
 
         <main className="flex-1 flex overflow-hidden relative">
@@ -1335,6 +1349,9 @@ export default function App() {
         onPrevious={playPrevious}
         volume={volume}
         onVolumeChange={setVolume}
+        playbackRate={playbackRate}
+        onPlaybackRateChange={setPlaybackRate}
+        audioRef={audioRef}
         isShuffle={isShuffle}
         onToggleShuffle={() => setIsShuffle(!isShuffle)}
         repeatMode={repeatMode}
@@ -1388,7 +1405,7 @@ export default function App() {
 
       {/* Mobile Details Modal */}
       {showMobileDetails && selectedSong && (
-        <div className="fixed inset-0 z-50 flex justify-end xl:hidden">
+        <div className="fixed inset-0 z-[60] flex justify-end xl:hidden">
           <div
             className="absolute inset-0 bg-black/60 backdrop-blur-sm animate-in fade-in"
             onClick={() => setShowMobileDetails(false)}
@@ -1404,14 +1421,27 @@ export default function App() {
               onNavigateToSong={handleNavigateToSong}
               isLiked={selectedSong ? likedSongIds.has(selectedSong.id) : false}
               onToggleLike={toggleLike}
-              onPlay={playSong}
-              isPlaying={isPlaying}
-              currentSong={currentSong}
               onDelete={handleDeleteSong}
             />
           </div>
         </div>
       )}
+
+      <ConfirmDialog
+        isOpen={confirmDialog !== null}
+        title={confirmDialog?.title ?? ''}
+        message={confirmDialog?.message ?? ''}
+        onConfirm={() => confirmDialog?.onConfirm()}
+        onCancel={() => setConfirmDialog(null)}
+      />
     </div>
+  );
+}
+
+export default function App() {
+  return (
+    <I18nProvider>
+      <AppContent />
+    </I18nProvider>
   );
 }

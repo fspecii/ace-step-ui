@@ -23,12 +23,66 @@ from acestep.model_downloader import download_submodel
 # Global handler
 _llm_handler = None
 
+def find_smallest_lm_model(checkpoint_dir):
+    """Find the smallest acestep-5Hz-lm model in checkpoint directory.
+    
+    Returns the model name (e.g., 'acestep-5Hz-lm-0.6B') or None if not found.
+    """
+    if not os.path.exists(checkpoint_dir):
+        return None
+    
+    try:
+        # List all directories in checkpoint_dir
+        entries = os.listdir(checkpoint_dir)
+        lm_models = []
+        
+        for entry in entries:
+            if entry.startswith("acestep-5Hz-lm-"):
+                full_path = os.path.join(checkpoint_dir, entry)
+                if os.path.isdir(full_path):
+                    lm_models.append(entry)
+        
+        if not lm_models:
+            return None
+        
+        # Extract size from model name (e.g., "0.6B" from "acestep-5Hz-lm-0.6B")
+        def extract_size(model_name):
+            parts = model_name.replace("acestep-5Hz-lm-", "").upper()
+            # Handle formats like "0.6B", "4B", etc.
+            if parts.endswith("B"):
+                size_str = parts[:-1]
+                try:
+                    return float(size_str)
+                except ValueError:
+                    return float('inf')  # Invalid format, put at end
+            return float('inf')
+        
+        # Sort by size and return smallest
+        lm_models.sort(key=extract_size)
+        return lm_models[0]
+    
+    except Exception as e:
+        print(f"Warning: Error finding LM model: {e}", file=sys.stderr)
+        return None
+
 def get_llm_handler(lm_model=None, lm_backend=None):
     global _llm_handler
     if _llm_handler is None:
         _llm_handler = LLMHandler()
         checkpoint_dir = os.path.join(ACESTEP_PATH, "checkpoints")
-        lm_model_path = lm_model or "acestep-5Hz-lm-0.6B"  # Default to smallest model
+        
+        # Auto-detect smallest LM model if not specified
+        if not lm_model:
+            lm_model_path = find_smallest_lm_model(checkpoint_dir)
+            if lm_model_path:
+                print(f"Using detected LM model: {lm_model_path}", file=sys.stderr)
+            else:
+                # Fallback to default
+                lm_model_path = "acestep-5Hz-lm-0.6B"
+                print(f"No LM model detected, using default: {lm_model_path}", file=sys.stderr)
+        else:
+            lm_model_path = lm_model
+        
         backend = lm_backend or "pt"
 
         # Auto-download model if not present
@@ -39,6 +93,7 @@ def get_llm_handler(lm_model=None, lm_backend=None):
             if not success:
                 raise RuntimeError(f"Failed to download model {lm_model_path}: {msg}")
             print(f"[format_sample] Download complete: {msg}")
+        
         if torch.cuda.is_available():
             device = "cuda"
         elif torch.backends.mps.is_available():

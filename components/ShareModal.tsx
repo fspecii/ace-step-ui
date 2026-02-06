@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import ReactDOM from 'react-dom';
 import { X, Link, Check } from 'lucide-react';
 import { Song } from '../types';
+import { useI18n } from '../context/I18nContext';
 
 interface ShareModalProps {
   isOpen: boolean;
@@ -53,6 +54,7 @@ const EmailIcon = () => (
 );
 
 export const ShareModal: React.FC<ShareModalProps> = ({ isOpen, onClose, song }) => {
+  const { t } = useI18n();
   const [copied, setCopied] = useState(false);
 
   if (!isOpen) return null;
@@ -98,8 +100,13 @@ export const ShareModal: React.FC<ShareModalProps> = ({ isOpen, onClose, song })
   };
 
   const handleShareEmail = () => {
-    const subject = encodeURIComponent(`🎵 Check out this AI song: ${song.title}`);
-    const body = encodeURIComponent(`Hey!\n\nI created this AI-generated song and thought you'd love it:\n\n"${song.title}" by ${song.creator || 'Unknown Artist'}\n${song.style ? `Genre: ${song.style}` : ''}\n\n🎧 Listen here: ${shareUrl}\n\n🤖 Made with ACE-Step UI - free and open source local AI music generation!`);
+    const subject = encodeURIComponent(`🎵 ${t('emailSubject')}: ${song.title}`);
+    const bodyText = t('emailBody')
+      .replace('{title}', song.title)
+      .replace('{creator}', song.creator || t('unknown'))
+      .replace('{style}', song.style ? `${t('genres')}: ${song.style}` : '')
+      .replace('{url}', shareUrl);
+    const body = encodeURIComponent(bodyText);
     window.location.href = `mailto:?subject=${subject}&body=${body}`;
   };
 
@@ -127,7 +134,7 @@ export const ShareModal: React.FC<ShareModalProps> = ({ isOpen, onClose, song })
     >
       <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-white/10 rounded-xl w-full max-w-sm p-6 shadow-2xl animate-in fade-in zoom-in-95 duration-200">
         <div className="flex justify-between items-center mb-6">
-          <h2 className="text-lg font-bold text-zinc-900 dark:text-white">Share Song</h2>
+          <h2 className="text-lg font-bold text-zinc-900 dark:text-white">{t('shareSong')}</h2>
           <button onClick={onClose} className="text-zinc-400 hover:text-zinc-900 dark:hover:text-white">
             <X size={20} />
           </button>
@@ -149,7 +156,7 @@ export const ShareModal: React.FC<ShareModalProps> = ({ isOpen, onClose, song })
           <button
             onClick={handleShareX}
             className="flex flex-col items-center gap-1.5 p-3 rounded-lg bg-black text-white hover:bg-zinc-800 transition-colors"
-            title="Share on X"
+            title={t('shareOnX')}
           >
             <XIcon />
             <span className="text-xs font-medium">X</span>
@@ -158,7 +165,7 @@ export const ShareModal: React.FC<ShareModalProps> = ({ isOpen, onClose, song })
           <button
             onClick={handleShareFacebook}
             className="flex flex-col items-center gap-1.5 p-3 rounded-lg bg-[#1877F2] text-white hover:bg-[#166FE5] transition-colors"
-            title="Share on Facebook"
+            title={t('shareOnFacebook')}
           >
             <FacebookIcon />
             <span className="text-xs font-medium">Facebook</span>
@@ -167,7 +174,7 @@ export const ShareModal: React.FC<ShareModalProps> = ({ isOpen, onClose, song })
           <button
             onClick={handleShareWhatsApp}
             className="flex flex-col items-center gap-1.5 p-3 rounded-lg bg-[#25D366] text-white hover:bg-[#22C55E] transition-colors"
-            title="Share on WhatsApp"
+            title={t('shareOnWhatsApp')}
           >
             <WhatsAppIcon />
             <span className="text-xs font-medium">WhatsApp</span>
@@ -176,7 +183,7 @@ export const ShareModal: React.FC<ShareModalProps> = ({ isOpen, onClose, song })
           <button
             onClick={handleShareTelegram}
             className="flex flex-col items-center gap-1.5 p-3 rounded-lg bg-[#0088CC] text-white hover:bg-[#0077B5] transition-colors"
-            title="Share on Telegram"
+            title={t('shareOnTelegram')}
           >
             <TelegramIcon />
             <span className="text-xs font-medium">Telegram</span>
@@ -185,7 +192,7 @@ export const ShareModal: React.FC<ShareModalProps> = ({ isOpen, onClose, song })
           <button
             onClick={handleShareReddit}
             className="flex flex-col items-center gap-1.5 p-3 rounded-lg bg-[#FF4500] text-white hover:bg-[#FF5722] transition-colors"
-            title="Share on Reddit"
+            title={t('shareOnReddit')}
           >
             <RedditIcon />
             <span className="text-xs font-medium">Reddit</span>
@@ -194,7 +201,7 @@ export const ShareModal: React.FC<ShareModalProps> = ({ isOpen, onClose, song })
           <button
             onClick={handleShareLinkedIn}
             className="flex flex-col items-center gap-1.5 p-3 rounded-lg bg-[#0A66C2] text-white hover:bg-[#004182] transition-colors"
-            title="Share on LinkedIn"
+            title={t('shareOnLinkedIn')}
           >
             <LinkedInIcon />
             <span className="text-xs font-medium">LinkedIn</span>
@@ -203,7 +210,7 @@ export const ShareModal: React.FC<ShareModalProps> = ({ isOpen, onClose, song })
           <button
             onClick={handleShareEmail}
             className="flex flex-col items-center gap-1.5 p-3 rounded-lg bg-zinc-600 dark:bg-zinc-700 text-white hover:bg-zinc-700 dark:hover:bg-zinc-600 transition-colors"
-            title="Share via Email"
+            title={t('shareViaEmail')}
           >
             <EmailIcon />
             <span className="text-xs font-medium">Email</span>
@@ -212,10 +219,10 @@ export const ShareModal: React.FC<ShareModalProps> = ({ isOpen, onClose, song })
           <button
             onClick={handleCopyLink}
             className="flex flex-col items-center gap-1.5 p-3 rounded-lg border border-zinc-200 dark:border-white/10 text-zinc-900 dark:text-white hover:bg-zinc-50 dark:hover:bg-white/5 transition-colors"
-            title="Copy Link"
+            title={t('copyLink')}
           >
             {copied ? <Check size={20} className="text-green-500" /> : <Link size={20} />}
-            <span className="text-xs font-medium">{copied ? 'Copied!' : 'Copy'}</span>
+            <span className="text-xs font-medium">{copied ? t('copied') : t('copy')}</span>
           </button>
         </div>
       </div>

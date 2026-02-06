@@ -136,6 +136,7 @@ async function submitToApi(params: GenerationParams): Promise<{ taskId: string }
     use_cot_caption: false, // Explicitly disable CoT features that require LLM
     use_cot_language: false, // Explicitly disable CoT features that require LLM
     use_cot_metas: false, // Explicitly disable CoT features that require LLM
+    dit_model: params.model || undefined,
     lm_backend: params.lmBackend || 'pt',
     lm_model_path: params.lmModel || undefined,
   };
@@ -360,6 +361,9 @@ export interface GenerationParams {
   lyrics: string;
   style: string;
   title: string;
+
+  // Model Selection
+  model?: string;
 
   // Common
   instrumental: boolean;
@@ -636,6 +640,7 @@ async function processGeneration(
       '--json',
     ];
 
+    if (params.model) args.push('--model', params.model);
     if (lyrics) args.push('--lyrics', lyrics);
     if (params.instrumental) args.push('--instrumental');
     if (params.bpm && params.bpm > 0) args.push('--bpm', String(params.bpm));

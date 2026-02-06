@@ -2,9 +2,11 @@ import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { Song } from '../types';
 import { Play, MoreHorizontal, Heart, ThumbsDown, ListPlus, Pause, Search, Filter, Check, Globe, Lock, Loader2, ThumbsUp, Share2, Video, Info, Clock } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
+import { useI18n } from '../context/I18nContext';
 import { SongDropdownMenu } from './SongDropdownMenu';
 import { ShareModal } from './ShareModal';
 import { AlbumCover } from './AlbumCover';
+import { songsApi } from '../services/api';
 
 interface SongListProps {
     songs: Song[];
@@ -22,6 +24,7 @@ interface SongListProps {
     onNavigateToProfile?: (username: string) => void;
     onReusePrompt?: (song: Song) => void;
     onDelete?: (song: Song) => void;
+    onSongUpdate?: (updatedSong: Song) => void;
     onDeleteMany?: (songs: Song[]) => void;
     onUseAsReference?: (song: Song) => void;
     onCoverSong?: (song: Song) => void;
@@ -36,12 +39,20 @@ interface SongListProps {
 // Define Filter Types
 type FilterType = 'liked' | 'public' | 'private' | 'generating';
 
-const FILTERS: { id: FilterType; label: string; icon: React.ReactNode }[] = [
-    { id: 'liked', label: 'Liked', icon: <ThumbsUp size={16} /> },
-    { id: 'public', label: 'Public', icon: <Globe size={16} /> },
-    { id: 'private', label: 'Private', icon: <Lock size={16} /> },
-    { id: 'generating', label: 'Generating', icon: <Loader2 size={16} /> },
-];
+// Map model ID to short display name
+const getModelDisplayName = (modelId?: string): string => {
+    if (!modelId) return 'v1.5';
+    
+    const mapping: Record<string, string> = {
+        'acestep-v15-base': '1.5B',
+        'acestep-v15-sft': '1.5S',
+        'acestep-v15-turbo-shift1': '1.5TS1',
+        'acestep-v15-turbo-shift3': '1.5TS3',
+        'acestep-v15-turbo-continuous': '1.5TC',
+        'acestep-v15-turbo': '1.5T',
+    };
+    return mapping[modelId] || 'v1.5';
+};
 
 const createDragPreview = (element: HTMLElement) => {
     const clone = element.cloneNode(true) as HTMLElement;
@@ -91,6 +102,7 @@ export const SongList: React.FC<SongListProps> = ({
     onNavigateToProfile,
     onReusePrompt,
     onDelete,
+    onSongUpdate,
     onDeleteMany,
     onUseAsReference,
     onCoverSong,
@@ -98,12 +110,20 @@ export const SongList: React.FC<SongListProps> = ({
     onCoverUpload
 }) => {
     const { user } = useAuth();
+    const { t } = useI18n();
     const [searchQuery, setSearchQuery] = useState('');
     const [activeFilters, setActiveFilters] = useState<Set<FilterType>>(new Set());
     const [isFilterOpen, setIsFilterOpen] = useState(false);
     const [isSelecting, setIsSelecting] = useState(false);
     const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
     const filterRef = useRef<HTMLDivElement>(null);
+
+    const FILTERS: { id: FilterType; label: string; icon: React.ReactNode }[] = [
+        { id: 'liked', label: t('liked'), icon: <ThumbsUp size={16} /> },
+        { id: 'public', label: t('public'), icon: <Globe size={16} /> },
+        { id: 'private', label: t('private'), icon: <Lock size={16} /> },
+        { id: 'generating', label: t('generatingStatus'), icon: <Loader2 size={16} /> }
+    ];
 
     // Close filter dropdown when clicking outside
     useEffect(() => {
@@ -213,7 +233,7 @@ export const SongList: React.FC<SongListProps> = ({
                                 type="text"
                                 value={searchQuery}
                                 onChange={(e) => setSearchQuery(e.target.value)}
-                                placeholder="Search your songs..."
+                                placeholder={t('searchYourSongs')}
                                 className="w-full bg-zinc-100 dark:bg-[#121214] border border-zinc-200 dark:border-white/10 rounded-lg pl-10 pr-4 py-2.5 text-sm text-zinc-900 dark:text-white focus:outline-none focus:border-zinc-400 dark:focus:border-white/20 placeholder-zinc-500 dark:placeholder-zinc-600 transition-colors"
                             />
                             <Search className="w-4 h-4 text-zinc-500 absolute left-3 top-3 group-focus-within:text-black dark:group-focus-within:text-white transition-colors" />
@@ -231,14 +251,14 @@ export const SongList: React.FC<SongListProps> = ({
                     `}
                             >
                                 <Filter size={14} fill={activeFilters.size > 0 ? "currentColor" : "none"} />
-                                <span>Filters {activeFilters.size > 0 && `(${activeFilters.size})`}</span>
+                                <span>{t('filters')} {activeFilters.size > 0 && `(${activeFilters.size})`}</span>
                             </button>
 
                             {/* Filter Dropdown */}
                             {isFilterOpen && (
                                 <div className="absolute right-0 top-full mt-2 w-56 bg-white dark:bg-[#18181b] border border-zinc-200 dark:border-white/10 rounded-xl shadow-2xl overflow-hidden py-1 z-50 animate-in fade-in zoom-in-95 duration-100 origin-top-right">
                                     <div className="px-3 py-2 text-[10px] font-bold text-zinc-500 uppercase tracking-wider">
-                                        Refine By
+                                        {t('refineBy')}
                                     </div>
                                     {FILTERS.map(filter => (
                                         <button
@@ -326,12 +346,12 @@ export const SongList: React.FC<SongListProps> = ({
                             <div className="w-16 h-16 rounded-full bg-zinc-100 dark:bg-white/5 flex items-center justify-center">
                                 <Filter size={32} />
                             </div>
-                            <p className="font-medium">No songs match your filters.</p>
+                            <p className="font-medium">{t('noSongsMatchFilters')}</p>
                             <button
                                 onClick={() => { setActiveFilters(new Set()); setSearchQuery(''); }}
                                 className="text-pink-600 dark:text-pink-500 text-sm font-bold hover:underline"
                             >
-                                Clear filters
+                                {t('clearFilters')}
                             </button>
                         </div>
                     ) : (
@@ -365,6 +385,7 @@ export const SongList: React.FC<SongListProps> = ({
                                     onNavigateToProfile={onNavigateToProfile}
                                     onReusePrompt={() => onReusePrompt?.(item.song)}
                                     onDelete={() => onDelete?.(item.song)}
+                                    onSongUpdate={onSongUpdate}
                                     onUseAsReference={() => onUseAsReference?.(item.song)}
                                     onCoverSong={() => onCoverSong?.(item.song)}
                                 />
@@ -417,6 +438,7 @@ interface SongItemProps {
     onNavigateToProfile?: (username: string) => void;
     onReusePrompt?: () => void;
     onDelete?: () => void;
+    onSongUpdate?: (updatedSong: Song) => void;
     onUseAsReference?: () => void;
     onCoverSong?: () => void;
 }
@@ -440,12 +462,54 @@ const SongItem: React.FC<SongItemProps> = ({
     onNavigateToProfile,
     onReusePrompt,
     onDelete,
+    onSongUpdate,
     onUseAsReference,
     onCoverSong
 }) => {
+    const { token } = useAuth();
     const [showDropdown, setShowDropdown] = useState(false);
     const [shareModalOpen, setShareModalOpen] = useState(false);
     const [imageError, setImageError] = useState(false);
+    const [isEditingTitle, setIsEditingTitle] = useState(false);
+    const [editedTitle, setEditedTitle] = useState(song.title);
+    const titleInputRef = useRef<HTMLInputElement>(null);
+
+    useEffect(() => {
+        if (isEditingTitle && titleInputRef.current) {
+            titleInputRef.current.focus();
+            titleInputRef.current.select();
+        }
+    }, [isEditingTitle]);
+
+    const handleSaveTitle = async () => {
+        if (!token || !isOwner || !editedTitle.trim() || editedTitle === song.title) {
+            setIsEditingTitle(false);
+            setEditedTitle(song.title);
+            return;
+        }
+
+        try {
+            const response = await songsApi.updateSong(song.id, { title: editedTitle.trim() }, token);
+            setIsEditingTitle(false);
+            // 更新父组件的歌曲列表
+            if (onSongUpdate && response.song) {
+                onSongUpdate(response.song);
+            }
+        } catch (error) {
+            console.error('Failed to update title:', error);
+            setEditedTitle(song.title);
+            setIsEditingTitle(false);
+        }
+    };
+
+    const handleTitleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+        if (e.key === 'Enter') {
+            handleSaveTitle();
+        } else if (e.key === 'Escape') {
+            setEditedTitle(song.title);
+            setIsEditingTitle(false);
+        }
+    };
 
     return (
         <>
@@ -550,11 +614,32 @@ const SongItem: React.FC<SongItemProps> = ({
             <div className="flex-1 min-w-0 flex flex-col justify-between py-1">
                 <div className="space-y-1">
                     <div className="flex items-center gap-2">
-                        <h3 className={`font-bold text-lg truncate ${isCurrent ? 'text-pink-600 dark:text-pink-500' : 'text-zinc-900 dark:text-white'}`}>
-                            {song.title || (song.isGenerating ? (song.queuePosition ? "Queued..." : "Creating...") : "Untitled")}
-                        </h3>
-                        <span className="inline-flex items-center justify-center text-[9px] font-bold text-white bg-gradient-to-r from-pink-500 to-purple-500 px-1.5 py-0.5 rounded-sm shadow-sm">
-                            v1.5
+                        {isEditingTitle && isOwner ? (
+                            <input
+                                ref={titleInputRef}
+                                type="text"
+                                value={editedTitle}
+                                onChange={(e) => setEditedTitle(e.target.value)}
+                                onBlur={handleSaveTitle}
+                                onKeyDown={handleTitleKeyDown}
+                                onClick={(e) => e.stopPropagation()}
+                                className="font-bold text-lg bg-zinc-100 dark:bg-zinc-800 px-2 py-0.5 rounded border border-pink-500 focus:outline-none text-zinc-900 dark:text-white min-w-0 flex-1"
+                            />
+                        ) : (
+                            <h3
+                                className={`font-bold text-lg truncate ${isCurrent ? 'text-pink-600 dark:text-pink-500' : 'text-zinc-900 dark:text-white'} ${isOwner && !song.isGenerating ? 'cursor-pointer hover:underline' : ''}`}
+                                onClick={(e) => {
+                                    if (isOwner && !song.isGenerating) {
+                                        e.stopPropagation();
+                                        setIsEditingTitle(true);
+                                    }
+                                }}
+                            >
+                                {song.title || (song.isGenerating ? (song.queuePosition ? "Queued..." : "Creating...") : "Untitled")}
+                            </h3>
+                        )}
+                        <span className="inline-flex items-center justify-center text-[9px] font-bold text-white bg-gradient-to-r from-pink-500 to-purple-500 px-1.5 py-0.5 rounded-sm shadow-sm" title={`DiT model: ${song.ditModel || 'undefined'}`}>
+                            {getModelDisplayName(song.ditModel)}
                         </span>
                         {song.isPublic === false && (
                             <Lock size={12} className="text-zinc-400 dark:text-zinc-500" />

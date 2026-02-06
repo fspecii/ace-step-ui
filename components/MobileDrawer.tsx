@@ -100,7 +100,7 @@ export function MobileDrawer({ isOpen, onClose, position, children, title }: Mob
 
   const content = (
     <div
-      className={`fixed inset-0 z-50 ${backdropAnimation}`}
+      className={`fixed inset-0 z-[60] ${backdropAnimation}`}
       onClick={handleBackdropClick}
       role="presentation"
     >

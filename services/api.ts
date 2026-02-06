@@ -106,6 +106,7 @@ export interface Song {
   user_id?: string;
   created_at: string;
   creator?: string;
+  ditModel?: string;
   generation_params?: any;
 }
 
@@ -155,8 +156,46 @@ export const songsApi = {
   createSong: (song: Partial<Song>, token: string): Promise<{ song: Song }> =>
     api('/api/songs', { method: 'POST', body: song, token }),
 
-  updateSong: (id: string, updates: Partial<Song>, token: string): Promise<{ song: Song }> =>
-    api(`/api/songs/${id}`, { method: 'PATCH', body: updates, token }),
+  updateSong: async (id: string, updates: Partial<Song>, token: string): Promise<{ song: any }> => {
+    const result = await api(`/api/songs/${id}`, { method: 'PATCH', body: updates, token }) as { song: any };
+    const s = result.song;
+    const rawUrl = s.audio_url || s.audioUrl;
+    const resolvedUrl = getAudioUrl(rawUrl, s.id);
+    
+    return {
+      song: {
+        id: s.id,
+        title: s.title,
+        lyrics: s.lyrics,
+        style: s.style,
+        caption: s.caption,
+        cover_url: s.cover_url,
+        coverUrl: s.cover_url || s.coverUrl || `https://picsum.photos/seed/${s.id}/400/400`,
+        duration: s.duration && s.duration > 0 ? `${Math.floor(s.duration / 60)}:${String(Math.floor(s.duration % 60)).padStart(2, '0')}` : '0:00',
+        createdAt: new Date(s.created_at || s.createdAt),
+        created_at: s.created_at,
+        tags: s.tags || [],
+        audioUrl: resolvedUrl,
+        audio_url: resolvedUrl,
+        isPublic: s.is_public ?? s.isPublic,
+        is_public: s.is_public ?? s.isPublic,
+        likeCount: s.like_count || s.likeCount || 0,
+        like_count: s.like_count || s.likeCount || 0,
+        viewCount: s.view_count || s.viewCount || 0,
+        view_count: s.view_count || s.viewCount || 0,
+        userId: s.user_id || s.userId,
+        user_id: s.user_id || s.userId,
+        creator: s.creator,
+        creator_avatar: s.creator_avatar,
+        ditModel: s.dit_model || s.ditModel,
+        isGenerating: s.isGenerating,
+        queuePosition: s.queuePosition,
+        bpm: s.bpm,
+        key_scale: s.key_scale,
+        time_signature: s.time_signature,
+      }
+    };
+  },
 
   deleteSong: (id: string, token: string): Promise<{ success: boolean }> =>
     api(`/api/songs/${id}`, { method: 'DELETE', token }),
@@ -205,6 +244,9 @@ export interface GenerationParams {
   lyrics: string;
   style: string;
   title: string;
+
+  // Model Selection
+  ditModel?: string;
 
   // Common
   instrumental: boolean;
@@ -264,6 +306,7 @@ export interface GenerationParams {
   trackName?: string;
   completeTrackClasses?: string[];
   isFormatCaption?: boolean;
+  loraLoaded?: boolean;
 }
 
 export interface GenerationJob {
@@ -321,17 +364,35 @@ export const generateApi = {
     lmModel?: string;
     lmBackend?: string;
   }, token: string): Promise<{
-    success: boolean;
     caption?: string;
     lyrics?: string;
     bpm?: number;
     duration?: number;
     key_scale?: string;
-    language?: string;
+    vocal_language?: string;
     time_signature?: string;
     status_message?: string;
     error?: string;
   }> => api('/api/generate/format', { method: 'POST', body: params, token }),
+
+  // LoRA Inference
+  loadLora: (params: {
+    lora_path: string;
+  }, token: string): Promise<{
+    message: string;
+    lora_path: string;
+  }> => api('/api/lora/load', { method: 'POST', body: params, token }),
+
+  unloadLora: (token: string): Promise<{
+    message: string;
+  }> => api('/api/lora/unload', { method: 'POST', token }),
+
+  setLoraScale: (params: {
+    scale: number;
+  }, token: string): Promise<{
+    message: string;
+    scale: number;
+  }> => api('/api/lora/scale', { method: 'POST', body: params, token }),
 };
 
 // Users API
@@ -470,4 +531,230 @@ export interface ContactFormData {
 export const contactApi = {
   submit: (data: ContactFormData): Promise<{ success: boolean; message: string; id: string }> =>
     api('/api/contact', { method: 'POST', body: data }),
+};
+
+// Training API
+export interface DatasetSample {
+  index: number;
+  filename: string;
+  audio_path: string;
+  duration?: number;
+  caption?: string;
+  genre?: string;
+  prompt_override?: string | null;
+  lyrics?: string;
+  bpm?: number;
+  keyscale?: string;
+  timesignature?: string;
+  language?: string;
+  is_instrumental?: boolean;
+  labeled?: boolean;
+}
+
+export interface DatasetMetadata {
+  name: string;
+  custom_tag?: string;
+  tag_position?: 'prepend' | 'append' | 'replace';
+  all_instrumental?: boolean;
+}
+
+export interface TrainingStatus {
+  is_training: boolean;
+  should_stop: boolean;
+  current_step?: number;
+  current_loss?: number;
+  current_epoch?: number;
+  status?: string;
+  config?: {
+    lora_rank: number;
+    lora_alpha: number;
+    learning_rate: number;
+    epochs: number;
+  };
+  tensor_dir?: string;
+  loss_history?: Array<{ step: number; loss: number }>;
+  tensorboard_url?: string;
+  tensorboard_logdir?: string;
+  training_log?: string;
+  start_time?: number;
+  steps_per_second?: number;
+  estimated_time_remaining?: number;
+  error?: string;
+}
+
+export const trainingApi = {
+  // Dataset Builder
+  scanDirectory: (params: {
+    audio_dir: string;
+    dataset_name?: string;
+    custom_tag?: string;
+    tag_position?: 'prepend' | 'append' | 'replace';
+    all_instrumental?: boolean;
+  }, token: string): Promise<{
+    message: string;
+    num_samples: number;
+    samples: any[];
+  }> => api('/api/training/dataset/scan', { method: 'POST', body: params, token }),
+
+  loadDataset: (params: {
+    dataset_path: string;
+  }, token: string): Promise<{
+    message: string;
+    dataset_name: string;
+    num_samples: number;
+    labeled_count: number;
+    samples: any[];
+  }> => api('/api/training/dataset/load', { method: 'POST', body: params, token }),
+
+  autoLabel: (params: {
+    skip_metas?: boolean;
+    format_lyrics?: boolean;
+    transcribe_lyrics?: boolean;
+    only_unlabeled?: boolean;
+  }, token: string): Promise<{
+    message: string;
+    labeled_count: number;
+    samples: any[];
+  }> => api('/api/training/dataset/auto-label', { method: 'POST', body: params, token }),
+
+  autoLabelAsync: (params: {
+    skip_metas?: boolean;
+    format_lyrics?: boolean;
+    transcribe_lyrics?: boolean;
+    only_unlabeled?: boolean;
+  }, token: string): Promise<{
+    task_id: string;
+    message: string;
+    total: number;
+  }> => api('/api/training/dataset/auto-label-async', { method: 'POST', body: params, token }),
+
+  getAutoLabelStatus: (taskId: string, token: string): Promise<{
+    task_id: string;
+    status: 'running' | 'completed' | 'failed';
+    progress: string;
+    current: number;
+    total: number;
+    result?: {
+      message: string;
+      labeled_count: number;
+      samples: any[];
+    };
+    error?: string;
+  }> => api(`/api/training/dataset/auto-label-status/${taskId}`, { method: 'GET', token }),
+
+  saveDataset: (params: {
+    save_path: string;
+    dataset_name?: string;
+    custom_tag?: string;
+    tag_position?: 'prepend' | 'append' | 'replace';
+    all_instrumental?: boolean;
+    genre_ratio?: number;
+  }, token: string): Promise<{
+    message: string;
+    save_path: string;
+  }> => api('/api/training/dataset/save', { method: 'POST', body: params, token }),
+
+  preprocessDataset: (params: {
+    output_dir: string;
+  }, token: string): Promise<{
+    message: string;
+    output_dir: string;
+    num_tensors: number;
+  }> => api('/api/training/dataset/preprocess', { method: 'POST', body: params, token }),
+
+  preprocessDatasetAsync: (params: {
+    output_dir: string;
+  }, token: string): Promise<{
+    task_id: string;
+    message: string;
+    total: number;
+  }> => api('/api/training/dataset/preprocess-async', { method: 'POST', body: params, token }),
+
+  getPreprocessStatus: (taskId: string, token: string): Promise<{
+    task_id: string;
+    status: 'running' | 'completed' | 'failed';
+    progress: string;
+    current: number;
+    total: number;
+    result?: {
+      message: string;
+      output_dir: string;
+      num_tensors: number;
+    };
+    error?: string;
+  }> => api(`/api/training/dataset/preprocess-status/${taskId}`, { method: 'GET', token }),
+
+  getSamples: (token: string): Promise<{
+    dataset_name: string;
+    num_samples: number;
+    labeled_count: number;
+    samples: DatasetSample[];
+  }> => api('/api/training/dataset/samples', { token }),
+
+  getSample: (index: number, token: string): Promise<DatasetSample> =>
+    api(`/api/training/dataset/sample/${index}`, { token }),
+
+  updateSample: (index: number, params: {
+    caption?: string;
+    genre?: string;
+    prompt_override?: string | null;
+    lyrics?: string;
+    bpm?: number | null;
+    keyscale?: string;
+    timesignature?: string;
+    language?: string;
+    duration?: number;
+    is_instrumental?: boolean;
+  }, token: string): Promise<{
+    message: string;
+    sample: DatasetSample;
+  }> => api(`/api/training/dataset/sample/${index}`, { method: 'PUT', body: params, token }),
+
+  // Training
+  loadTensorInfo: (params: {
+    tensor_dir: string;
+  }, token: string): Promise<{
+    dataset_name: string;
+    num_samples: number;
+    tensor_dir: string;
+    message: string;
+  }> => api('/api/training/load_tensor_info', { method: 'POST', body: params, token }),
+
+  startTraining: (params: {
+    tensor_dir: string;
+    lora_rank?: number;
+    lora_alpha?: number;
+    lora_dropout?: number;
+    learning_rate?: number;
+    train_epochs?: number;
+    train_batch_size?: number;
+    gradient_accumulation?: number;
+    save_every_n_epochs?: number;
+    training_shift?: number;
+    training_seed?: number;
+    lora_output_dir?: string;
+    use_fp8?: boolean;
+  }, token: string): Promise<{
+    message: string;
+    tensor_dir: string;
+    output_dir: string;
+    config: any;
+    fp8_enabled?: boolean;
+  }> => api('/api/training/start', { method: 'POST', body: params, token }),
+
+  stopTraining: (token: string): Promise<{
+    message: string;
+  }> => api('/api/training/stop', { method: 'POST', token }),
+
+  getTrainingStatus: (token: string): Promise<TrainingStatus> =>
+    api('/api/training/status', { token }),
+
+  exportLora: (params: {
+    export_path: string;
+    lora_output_dir: string;
+  }, token: string): Promise<{
+    message: string;
+    export_path: string;
+    source: string;
+  }> => api('/api/training/export', { method: 'POST', body: params, token }),
 };

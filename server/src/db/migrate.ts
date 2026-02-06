@@ -34,6 +34,7 @@ CREATE TABLE IF NOT EXISTS songs (
   view_count INTEGER DEFAULT 0,
   has_video INTEGER DEFAULT 0,
   video_url TEXT,
+  model TEXT,
   generation_params TEXT,
   created_at TEXT DEFAULT (datetime('now')),
   updated_at TEXT DEFAULT (datetime('now'))
@@ -124,6 +125,18 @@ CREATE TABLE IF NOT EXISTS contact_submissions (
   created_at TEXT DEFAULT (datetime('now'))
 );
 
+-- Audio files table (for tracking uploaded/generated audio with storage metadata)
+CREATE TABLE IF NOT EXISTS audio_files (
+  id TEXT PRIMARY KEY,
+  song_id TEXT NOT NULL REFERENCES songs(id) ON DELETE CASCADE,
+  storage_key TEXT NOT NULL,
+  storage_provider TEXT DEFAULT 'local',
+  file_size_bytes INTEGER,
+  expires_at TEXT,
+  deleted_at TEXT,
+  created_at TEXT DEFAULT (datetime('now'))
+);
+
 -- Indexes for performance
 CREATE INDEX IF NOT EXISTS idx_songs_user_id ON songs(user_id);
 CREATE INDEX IF NOT EXISTS idx_songs_created_at ON songs(created_at);
@@ -139,6 +152,9 @@ CREATE INDEX IF NOT EXISTS idx_followers_follower ON followers(follower_id);
 CREATE INDEX IF NOT EXISTS idx_followers_following ON followers(following_id);
 CREATE INDEX IF NOT EXISTS idx_reference_tracks_user_id ON reference_tracks(user_id);
 CREATE INDEX IF NOT EXISTS idx_reference_tracks_created_at ON reference_tracks(created_at);
+CREATE INDEX IF NOT EXISTS idx_audio_files_song_id ON audio_files(song_id);
+CREATE INDEX IF NOT EXISTS idx_audio_files_deleted_at ON audio_files(deleted_at);
+CREATE INDEX IF NOT EXISTS idx_audio_files_expires_at ON audio_files(expires_at);
 `;
 
 function migrate(): void {
@@ -156,6 +172,20 @@ function migrate(): void {
     } else {
       console.error('Migration failed:', error);
       throw error;
+    }
+  }
+
+  // Add columns to existing tables (for incremental schema updates)
+  try {
+    // Add model column to songs table if it doesn't exist
+    db.exec(`ALTER TABLE songs ADD COLUMN model TEXT`);
+    console.log('Added model column to songs table');
+  } catch (error) {
+    const errorMsg = String(error);
+    if (errorMsg.includes('duplicate column name')) {
+      console.log('Column model already exists in songs table');
+    } else {
+      console.error('Failed to add model column:', error);
     }
   }
 }

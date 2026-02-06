@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { X, Camera, Image as ImageIcon, Upload, Loader2 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { usersApi, UserProfile } from '../services/api';
+import { useI18n } from '../context/I18nContext';
 
 interface EditProfileModalProps {
     isOpen: boolean;
@@ -10,6 +11,7 @@ interface EditProfileModalProps {
 }
 
 export const EditProfileModal: React.FC<EditProfileModalProps> = ({ isOpen, onClose, onSaved }) => {
+    const { t } = useI18n();
     const { user, token, refreshUser, updateUsername } = useAuth();
     const [loading, setLoading] = useState(true);
     const [profile, setProfile] = useState<UserProfile | null>(null);
@@ -83,7 +85,7 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({ isOpen, onCl
             if (editUsername && editUsername !== profile.username) {
                 const sanitized = editUsername.trim().replace(/[^a-zA-Z0-9_-]/g, '');
                 if (sanitized.length < 2) {
-                    setUsernameError('Username must be at least 2 characters');
+                    setUsernameError(t('usernameMinLengthError'));
                     setIsSaving(false);
                     return;
                 }
@@ -92,9 +94,9 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({ isOpen, onCl
                 } catch (err: unknown) {
                     const error = err as Error & { message?: string };
                     if (error.message?.includes('taken')) {
-                        setUsernameError('Username is already taken');
+                        setUsernameError(t('usernameTakenError'));
                     } else {
-                        setUsernameError('Failed to update username');
+                        setUsernameError(t('usernameUpdateFailedError'));
                     }
                     setIsSaving(false);
                     return;
@@ -152,27 +154,27 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({ isOpen, onCl
     if (!isOpen) return null;
 
     return (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
-            <div className="w-full max-w-lg bg-zinc-900 border border-zinc-800 rounded-2xl shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-200">
-                <div className="px-6 py-4 border-b border-zinc-800 flex items-center justify-between">
-                    <h2 className="text-xl font-bold text-white">Edit Profile</h2>
-                    <button onClick={handleClose} className="text-zinc-400 hover:text-white transition-colors">
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 dark:bg-black/80 backdrop-blur-sm p-4">
+            <div className="w-full max-w-lg bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+                <div className="px-6 py-4 border-b border-zinc-200 dark:border-zinc-800 flex items-center justify-between">
+                    <h2 className="text-xl font-bold text-zinc-900 dark:text-white">{t('editProfile')}</h2>
+                    <button onClick={handleClose} className="text-zinc-500 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-white transition-colors">
                         <X size={20} />
                     </button>
                 </div>
 
                 {loading ? (
                     <div className="p-12 flex items-center justify-center">
-                        <Loader2 size={32} className="animate-spin text-zinc-400" />
+                        <Loader2 size={32} className="animate-spin text-zinc-400 dark:text-zinc-400" />
                     </div>
                 ) : (
                     <>
                         <div className="p-6 space-y-6">
                             {/* Username Input */}
                             <div className="space-y-2">
-                                <label className="text-sm font-medium text-zinc-300">Username</label>
+                                <label className="text-sm font-medium text-zinc-700 dark:text-zinc-300">{t('usernameLabel')}</label>
                                 <div className="flex items-center gap-2">
-                                    <span className="text-zinc-500">@</span>
+                                    <span className="text-zinc-500 dark:text-zinc-500">@</span>
                                     <input
                                         type="text"
                                         value={editUsername}
@@ -180,22 +182,22 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({ isOpen, onCl
                                             setEditUsername(e.target.value);
                                             setUsernameError('');
                                         }}
-                                        placeholder="username"
+                                        placeholder={t('usernamePlaceholder')}
                                         maxLength={50}
-                                        className="flex-1 bg-black border border-zinc-800 rounded-lg px-3 py-2 text-white placeholder-zinc-600 focus:outline-none focus:border-indigo-500 transition-colors"
+                                        className="flex-1 bg-zinc-50 dark:bg-black border border-zinc-300 dark:border-zinc-800 rounded-lg px-3 py-2 text-zinc-900 dark:text-white placeholder-zinc-400 dark:placeholder-zinc-600 focus:outline-none focus:border-indigo-500 transition-colors"
                                     />
                                 </div>
                                 {usernameError && (
                                     <p className="text-sm text-red-500">{usernameError}</p>
                                 )}
-                                <p className="text-xs text-zinc-500">Letters, numbers, underscores, and hyphens only</p>
+                                <p className="text-xs text-zinc-500 dark:text-zinc-500">{t('usernameRequirements')}</p>
                             </div>
 
                             {/* Avatar Upload */}
                             <div className="space-y-2">
-                                <label className="text-sm font-medium text-zinc-300">Avatar Image</label>
+                                <label className="text-sm font-medium text-zinc-700 dark:text-zinc-300">{t('avatarImage')}</label>
                                 <div className="flex gap-4 items-center">
-                                    <div className="w-20 h-20 rounded-full bg-zinc-800 border-2 border-zinc-700 border-dashed overflow-hidden flex-shrink-0 relative">
+                                    <div className="w-20 h-20 rounded-full bg-zinc-100 dark:bg-zinc-800 border-2 border-zinc-300 dark:border-zinc-700 border-dashed overflow-hidden flex-shrink-0 relative">
                                         {(avatarPreview || editAvatarUrl) ? (
                                             <img
                                                 src={avatarPreview || editAvatarUrl}
@@ -203,7 +205,7 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({ isOpen, onCl
                                                 onError={(e) => (e.currentTarget.style.display = 'none')}
                                             />
                                         ) : (
-                                            <div className="w-full h-full flex items-center justify-center text-zinc-500">
+                                            <div className="w-full h-full flex items-center justify-center text-zinc-400 dark:text-zinc-500">
                                                 <Camera size={24} />
                                             </div>
                                         )}
@@ -224,22 +226,22 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({ isOpen, onCl
                                         <button
                                             type="button"
                                             onClick={() => avatarInputRef.current?.click()}
-                                            className="flex items-center gap-2 px-4 py-2 bg-zinc-800 hover:bg-zinc-700 text-white rounded-lg text-sm font-medium transition-colors"
+                                            className="flex items-center gap-2 px-4 py-2 bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 text-zinc-900 dark:text-white rounded-lg text-sm font-medium transition-colors"
                                         >
                                             <Upload size={16} />
-                                            Upload Avatar
+                                            {t('uploadAvatar')}
                                         </button>
-                                        <p className="text-xs text-zinc-500">JPG, PNG, WebP, GIF - Max 5MB</p>
+                                        <p className="text-xs text-zinc-500 dark:text-zinc-500">{t('avatarFormats')}</p>
                                     </div>
                                 </div>
                             </div>
 
                             {/* Banner Upload */}
                             <div className="space-y-2">
-                                <label className="text-sm font-medium text-zinc-300">Banner Image</label>
+                                <label className="text-sm font-medium text-zinc-700 dark:text-zinc-300">{t('bannerImage')}</label>
                                 <div
                                     onClick={() => bannerInputRef.current?.click()}
-                                    className="relative w-full h-32 rounded-lg bg-zinc-800 border-2 border-zinc-700 border-dashed overflow-hidden cursor-pointer hover:border-zinc-600 transition-colors"
+                                    className="relative w-full h-32 rounded-lg bg-zinc-100 dark:bg-zinc-800 border-2 border-zinc-300 dark:border-zinc-700 border-dashed overflow-hidden cursor-pointer hover:border-zinc-400 dark:hover:border-zinc-600 transition-colors"
                                 >
                                     {(bannerPreview || editBannerUrl) ? (
                                         <img
@@ -248,9 +250,9 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({ isOpen, onCl
                                             onError={(e) => (e.currentTarget.style.display = 'none')}
                                         />
                                     ) : (
-                                        <div className="w-full h-full flex flex-col items-center justify-center text-zinc-500 gap-2">
+                                        <div className="w-full h-full flex flex-col items-center justify-center text-zinc-400 dark:text-zinc-500 gap-2">
                                             <ImageIcon size={32} />
-                                            <span className="text-sm">Click to upload banner</span>
+                                            <span className="text-sm">{t('clickToUploadBanner')}</span>
                                         </div>
                                     )}
                                     {uploadingBanner && (
@@ -266,37 +268,37 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({ isOpen, onCl
                                     onChange={handleBannerChange}
                                     className="hidden"
                                 />
-                                <p className="text-xs text-zinc-500">Recommended: 1500x500px - JPG, PNG, WebP, GIF - Max 5MB</p>
+                                <p className="text-xs text-zinc-500 dark:text-zinc-500">{t('bannerFormats')}</p>
                             </div>
 
                             {/* Bio Input */}
                             <div className="space-y-2">
-                                <label className="text-sm font-medium text-zinc-300">Bio</label>
+                                <label className="text-sm font-medium text-zinc-700 dark:text-zinc-300">{t('bio')}</label>
                                 <textarea
                                     value={editBio}
                                     onChange={(e) => setEditBio(e.target.value)}
-                                    placeholder="Tell us about yourself..."
+                                    placeholder={t('bioPlaceholder')}
                                     rows={4}
-                                    className="w-full bg-black border border-zinc-800 rounded-lg px-3 py-2 text-white placeholder-zinc-600 focus:outline-none focus:border-indigo-500 transition-colors resize-none"
+                                    className="w-full bg-zinc-50 dark:bg-black border border-zinc-300 dark:border-zinc-800 rounded-lg px-3 py-2 text-zinc-900 dark:text-white placeholder-zinc-400 dark:placeholder-zinc-600 focus:outline-none focus:border-indigo-500 transition-colors resize-none"
                                 />
                             </div>
                         </div>
 
-                        <div className="px-6 py-4 bg-black/20 border-t border-zinc-800 flex justify-end gap-3">
+                        <div className="px-6 py-4 bg-zinc-50 dark:bg-black/20 border-t border-zinc-200 dark:border-zinc-800 flex justify-end gap-3">
                             <button
                                 onClick={handleClose}
-                                className="px-4 py-2 text-sm font-medium text-zinc-300 hover:text-white transition-colors"
+                                className="px-4 py-2 text-sm font-medium text-zinc-600 dark:text-zinc-300 hover:text-zinc-900 dark:hover:text-white transition-colors"
                                 disabled={isSaving}
                             >
-                                Cancel
+                                {t('cancel')}
                             </button>
                             <button
                                 onClick={handleSaveProfile}
                                 disabled={isSaving || uploadingAvatar || uploadingBanner}
-                                className="px-6 py-2 bg-white text-black hover:bg-zinc-200 rounded-full text-sm font-bold transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                                className="px-6 py-2 bg-zinc-900 dark:bg-white text-white dark:text-black hover:bg-zinc-800 dark:hover:bg-zinc-200 rounded-full text-sm font-bold transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
                             >
                                 {isSaving && <Loader2 size={16} className="animate-spin" />}
-                                {uploadingAvatar ? 'Uploading Avatar...' : uploadingBanner ? 'Uploading Banner...' : isSaving ? 'Saving...' : 'Save Changes'}
+                                {uploadingAvatar ? t('uploadingAvatar') : uploadingBanner ? t('uploadingBanner') : isSaving ? t('saving') : t('saveChanges')}
                             </button>
                         </div>
                     </>

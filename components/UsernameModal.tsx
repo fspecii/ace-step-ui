@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { X, User, Sparkles } from 'lucide-react';
+import { useI18n } from '../context/I18nContext';
 
 interface UsernameModalProps {
   isOpen: boolean;
@@ -7,6 +8,7 @@ interface UsernameModalProps {
 }
 
 export const UsernameModal: React.FC<UsernameModalProps> = ({ isOpen, onSubmit }) => {
+  const { t } = useI18n();
   const [username, setUsername] = useState('');
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -19,12 +21,12 @@ export const UsernameModal: React.FC<UsernameModalProps> = ({ isOpen, onSubmit }
 
     const trimmed = username.trim();
     if (trimmed.length < 2) {
-      setError('Username must be at least 2 characters');
+      setError(t('usernameMinLength'));
       return;
     }
 
     if (!/^[a-zA-Z0-9_-]+$/.test(trimmed)) {
-      setError('Username can only contain letters, numbers, underscores, and dashes');
+      setError(t('usernameInvalidChars'));
       return;
     }
 
@@ -32,14 +34,14 @@ export const UsernameModal: React.FC<UsernameModalProps> = ({ isOpen, onSubmit }
     try {
       await onSubmit(trimmed);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to set username');
+      setError(err instanceof Error ? err.message : t('failedToSetUsername'));
     } finally {
       setIsLoading(false);
     }
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+    <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
       {/* Backdrop */}
       <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" />
 
@@ -58,17 +60,17 @@ export const UsernameModal: React.FC<UsernameModalProps> = ({ isOpen, onSubmit }
 
           {/* Title */}
           <h2 className="text-2xl font-bold text-center text-white mb-2">
-            Welcome to ACE-Step UI
+            {t('welcomeTitle')}
           </h2>
           <p className="text-zinc-400 text-center mb-8">
-            Enter your name to get started creating AI music
+            {t('welcomeSubtitle')}
           </p>
 
           {/* Form */}
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
               <label htmlFor="username" className="block text-sm font-medium text-zinc-300 mb-2">
-                Your Name
+                {t('yourName')}
               </label>
               <div className="relative">
                 <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
@@ -79,7 +81,7 @@ export const UsernameModal: React.FC<UsernameModalProps> = ({ isOpen, onSubmit }
                   id="username"
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}
-                  placeholder="Enter your name"
+                  placeholder={t('enterYourName')}
                   className="w-full pl-10 pr-4 py-3 bg-zinc-800 border border-zinc-700 rounded-xl text-white placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-pink-500 focus:border-transparent transition-all"
                   autoFocus
                   disabled={isLoading}
@@ -101,17 +103,17 @@ export const UsernameModal: React.FC<UsernameModalProps> = ({ isOpen, onSubmit }
                     <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
                     <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
                   </svg>
-                  Getting Started...
+                  {t('gettingStarted')}
                 </span>
               ) : (
-                'Get Started'
+                t('getStarted')
               )}
             </button>
           </form>
 
           {/* Footer */}
           <p className="mt-6 text-xs text-zinc-500 text-center">
-            Your music, your way. Create unlimited AI music for free.
+            {t('yourMusicYourWay')}
           </p>
         </div>
       </div>
