@@ -55,9 +55,12 @@ router.post('/dataset/scan', authMiddleware, async (req: AuthenticatedRequest, r
 
 router.post('/dataset/load', authMiddleware, async (req: AuthenticatedRequest, res: Response) => {
   try {
+    console.log('[Training] Load dataset request body:', JSON.stringify(req.body));
     const result = await proxyToAceStep('/v1/dataset/load', 'POST', req.body);
+    console.log('[Training] Load dataset response:', JSON.stringify(result));
     res.json(result);
   } catch (error: any) {
+    console.error('[Training] Load dataset error:', error.message);
     res.status(500).json({ error: error.message });
   }
 });
@@ -101,6 +104,24 @@ router.post('/dataset/save', authMiddleware, async (req: AuthenticatedRequest, r
 router.post('/dataset/preprocess', authMiddleware, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const result = await proxyToAceStep('/v1/dataset/preprocess', 'POST', req.body);
+    res.json(result);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+router.post('/dataset/preprocess-async', authMiddleware, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const result = await proxyToAceStep('/v1/dataset/preprocess_async', 'POST', req.body);
+    res.json(result);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+router.get('/dataset/preprocess-status/:taskId', authMiddleware, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const result = await proxyToAceStep(`/v1/dataset/preprocess_status/${req.params.taskId}`, 'GET');
     res.json(result);
   } catch (error: any) {
     res.status(500).json({ error: error.message });

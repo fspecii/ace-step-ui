@@ -51,7 +51,7 @@ export const TrainingPanel: React.FC<TrainingPanelProps> = () => {
   const [activeTab, setActiveTab] = useState<'dataset' | 'training'>('dataset');
   
   // Dataset Builder State
-  const [loadJsonPath, setLoadJsonPath] = useState('');
+  const [loadJsonPath, setLoadJsonPath] = useState('./datasets/my_lora_dataset.json');
   const [audioDirectory, setAudioDirectory] = useState('./datasets');
   const [scanStatus, setScanStatus] = useState('');
   const [loadJsonStatus, setLoadJsonStatus] = useState('');
@@ -64,11 +64,13 @@ export const TrainingPanel: React.FC<TrainingPanelProps> = () => {
   const [skipMetas, setSkipMetas] = useState(false);
   const [onlyUnlabeled, setOnlyUnlabeled] = useState(false);
   const [labelProgress, setLabelProgress] = useState('');
+  const [labelStatus, setLabelStatus] = useState<{ current: number; total: number; status: string } | null>(null);
   const [selectedSampleIndex, setSelectedSampleIndex] = useState(0);
   const [savePath, setSavePath] = useState('./datasets/my_lora_dataset.json');
   const [saveStatus, setSaveStatus] = useState('');
   const [preprocessOutputDir, setPreprocessOutputDir] = useState('./datasets/preprocessed_tensors');
   const [preprocessProgress, setPreprocessProgress] = useState('');
+  const [preprocessStatus, setPreprocessStatus] = useState<{ current: number; total: number; status: string } | null>(null);
   
   // Collapsible sections
   const [datasetSettingsOpen, setDatasetSettingsOpen] = useState(true);
@@ -228,11 +230,15 @@ export const TrainingPanel: React.FC<TrainingPanelProps> = () => {
     setLoadJsonStatus(t('loadingTracks'));
     try {
       const result = await trainingApi.loadDataset({ dataset_path: loadJsonPath }, token);
-      setLoadJsonStatus(result.message);
-      setDatasetName(result.dataset_name);
-      setAudioFiles(transformSamples(result.samples));
+      if (!result) {
+        setLoadJsonStatus('Failed to load dataset: No response from server');
+        return;
+      }
+      setLoadJsonStatus(result.message || 'Dataset loaded');
+      setDatasetName(result.dataset_name || '');
+      setAudioFiles(transformSamples(result.samples || []));
     } catch (error: any) {
-      setLoadJsonStatus(`${t('error')}: ${error.message}`);
+      setLoadJsonStatus(`${t('error')}: ${error?.message || 'Failed to load dataset'}`);
     }
   };
 
@@ -247,10 +253,14 @@ export const TrainingPanel: React.FC<TrainingPanelProps> = () => {
         tag_position: tagPosition,
         all_instrumental: allInstrumental,
       }, token);
-      setScanStatus(result.message);
-      setAudioFiles(transformSamples(result.samples));
+      if (!result) {
+        setScanStatus('Failed to scan: No response from server');
+        return;
+      }
+      setScanStatus(result.message || 'Scan completed');
+      setAudioFiles(transformSamples(result.samples || []));
     } catch (error: any) {
-      setScanStatus(`${t('error')}: ${error.message}`);
+      setScanStatus(`${t('error')}: ${error?.message || 'Failed to scan directory'}`);
     }
   };
 
@@ -265,8 +275,13 @@ export const TrainingPanel: React.FC<TrainingPanelProps> = () => {
         only_unlabeled: onlyUnlabeled,
       }, token);
       
+      if (!startResult || !startResult.task_id) {
+        setLabelProgress('Failed to start auto-labeling: No response from server');
+        return;
+      }
       const taskId = startResult.task_id;
-      setLabelProgress(`${startResult.message} (0/${startResult.total})`);
+      setLabelProgress(`${startResult.message || 'Starting'} (0/${startResult.total || 0})`);
+      setLabelStatus({ current: 0, total: startResult.total || 0, status: 'running' });
       
       // Poll for status
       const pollInterval = setInterval(async () => {
@@ -276,22 +291,26 @@ export const TrainingPanel: React.FC<TrainingPanelProps> = () => {
           // Update progress display
           const progressText = `${statusResult.progress} (${statusResult.current}/${statusResult.total})`;
           setLabelProgress(progressText);
+          setLabelStatus({ current: statusResult.current, total: statusResult.total, status: statusResult.status });
           
           // Check if completed
           if (statusResult.status === 'completed') {
             clearInterval(pollInterval);
             if (statusResult.result) {
-              setLabelProgress(statusResult.result.message);
-              setAudioFiles(transformSamples(statusResult.result.samples));
+              setLabelProgress(statusResult.result.message || 'Labeling completed');
+              setAudioFiles(transformSamples(statusResult.result.samples || []));
               setDatasetSettingsOpen(false);
             }
+            setLabelStatus(null);
           } else if (statusResult.status === 'failed') {
             clearInterval(pollInterval);
             setLabelProgress(`${t('error')}: ${statusResult.error || 'Unknown error'}`);
+            setLabelStatus(null);
           }
         } catch (pollError: any) {
           clearInterval(pollInterval);
-          setLabelProgress(`${t('error')}: ${pollError.message}`);
+          setLabelProgress(`${t('error')}: ${pollError?.message || 'Failed to check labeling status'}`);
+          setLabelStatus(null);
         }
       }, 2000); // Poll every 2 seconds
       
@@ -299,7 +318,7 @@ export const TrainingPanel: React.FC<TrainingPanelProps> = () => {
       return () => clearInterval(pollInterval);
       
     } catch (error: any) {
-      setLabelProgress(`${t('error')}: ${error.message}`);
+      setLabelProgress(`${t('error')}: ${error?.message || 'Failed to start auto-labeling'}`);
     }
   };
 
@@ -367,22 +386,68 @@ export const TrainingPanel: React.FC<TrainingPanelProps> = () => {
         all_instrumental: allInstrumental,
         genre_ratio: genreRatio,
       }, token);
-      setSaveStatus(result.message);
+      if (!result) {
+        setSaveStatus('Failed to save: No response from server');
+        return;
+      }
+      setSaveStatus(result.message || 'Dataset saved');
     } catch (error: any) {
-      setSaveStatus(`${t('error')}: ${error.message}`);
+      setSaveStatus(`${t('error')}: ${error?.message || 'Failed to save dataset'}`);
     }
   };
 
   const handlePreprocess = async () => {
     if (!token) return;
     setPreprocessProgress(t('preprocessing'));
+    
     try {
-      const result = await trainingApi.preprocessDataset({
+      // Start async preprocessing task
+      const startResult = await trainingApi.preprocessDatasetAsync({
         output_dir: preprocessOutputDir,
       }, token);
-      setPreprocessProgress(result.message);
+      
+      if (!startResult || !startResult.task_id) {
+        setPreprocessProgress('Failed to start preprocessing: No response from server');
+        return;
+      }
+      const taskId = startResult.task_id;
+      setPreprocessProgress(`${startResult.message || 'Starting'} (0/${startResult.total || 0})`);
+      setPreprocessStatus({ current: 0, total: startResult.total || 0, status: 'running' });
+      
+      // Poll for status
+      const pollInterval = setInterval(async () => {
+        try {
+          const statusResult = await trainingApi.getPreprocessStatus(taskId, token);
+          
+          // Update progress display
+          const progressText = `${statusResult.progress} (${statusResult.current}/${statusResult.total})`;
+          setPreprocessProgress(progressText);
+          setPreprocessStatus({ current: statusResult.current, total: statusResult.total, status: statusResult.status });
+          
+          // Check if completed
+          if (statusResult.status === 'completed') {
+            clearInterval(pollInterval);
+            if (statusResult.result) {
+              setPreprocessProgress(statusResult.result.message || 'Preprocessing completed');
+            }
+            setPreprocessStatus(null);
+          } else if (statusResult.status === 'failed') {
+            clearInterval(pollInterval);
+            setPreprocessProgress(`${t('error')}: ${statusResult.error || 'Unknown error'}`);
+            setPreprocessStatus(null);
+          }
+        } catch (pollError: any) {
+          clearInterval(pollInterval);
+          setPreprocessProgress(`${t('error')}: ${pollError?.message || 'Failed to check preprocessing status'}`);
+          setPreprocessStatus(null);
+        }
+      }, 2000); // Poll every 2 seconds
+      
+      // Cleanup on unmount
+      return () => clearInterval(pollInterval);
+      
     } catch (error: any) {
-      setPreprocessProgress(`${t('error')}: ${error.message}`);
+      setPreprocessProgress(`${t('error')}: ${error?.message || 'Failed to start preprocessing'}`);
     }
   };
 
@@ -391,14 +456,18 @@ export const TrainingPanel: React.FC<TrainingPanelProps> = () => {
     setTrainingDatasetInfo(t('loadingDataset'));
     try {
       const result = await trainingApi.loadTensorInfo({ tensor_dir: trainingTensorDir }, token);
+      if (!result) {
+        setTrainingDatasetInfo('Failed to load dataset info: No response from server');
+        return;
+      }
       setTrainingDatasetInfo(
         `${t('datasetInfo')
-          .replace('{name}', result.dataset_name)
-          .replace('{samples}', result.num_samples.toString())
-          .replace('{labeled}', result.num_samples.toString())}\n${result.message}`
+          .replace('{name}', result.dataset_name || 'Unknown')
+          .replace('{samples}', (result.num_samples || 0).toString())
+          .replace('{labeled}', (result.num_samples || 0).toString())}\n${result.message || ''}`
       );
     } catch (error: any) {
-      setTrainingDatasetInfo(`${t('error')}: ${error.message}`);
+      setTrainingDatasetInfo(`${t('error')}: ${error?.message || 'Failed to load dataset info'}`);
     }
   };
 
@@ -421,10 +490,14 @@ export const TrainingPanel: React.FC<TrainingPanelProps> = () => {
         lora_output_dir: loraOutputDir,
         use_fp8: useFP8,
       }, token);
+      if (!result) {
+        setTrainingProgress('Failed to start training: No response from server');
+        return;
+      }
       setIsTraining(true);
-      setTrainingProgress(result.message);
+      setTrainingProgress(result.message || 'Training started');
     } catch (error: any) {
-      setTrainingProgress(`${t('error')}: ${error.message}`);
+      setTrainingProgress(`${t('error')}: ${error?.message || 'Failed to start training'}`);
     }
   };
 
@@ -432,9 +505,13 @@ export const TrainingPanel: React.FC<TrainingPanelProps> = () => {
     if (!token) return;
     try {
       const result = await trainingApi.stopTraining(token);
-      setTrainingProgress(result.message);
+      if (!result) {
+        setTrainingProgress('Failed to stop training: No response from server');
+        return;
+      }
+      setTrainingProgress(result.message || 'Training stopped');
     } catch (error: any) {
-      setTrainingProgress(`${t('error')}: ${error.message}`);
+      setTrainingProgress(`${t('error')}: ${error?.message || 'Failed to stop training'}`);
     }
   };
 
@@ -473,7 +550,7 @@ export const TrainingPanel: React.FC<TrainingPanelProps> = () => {
       </div>
 
       {/* Content */}
-      <div className="flex-1 overflow-y-auto p-6 space-y-6 bg-white dark:bg-zinc-900">
+      <div className="flex-1 overflow-y-auto p-6 pb-24 lg:pb-32 space-y-6 bg-white dark:bg-zinc-900">
         {activeTab === 'dataset' ? (
           <>
             {/* Load & Scan */}
@@ -699,13 +776,47 @@ export const TrainingPanel: React.FC<TrainingPanelProps> = () => {
 
               <button
                 onClick={handleAutoLabel}
-                className="w-full py-3 bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 text-white rounded-lg font-medium flex items-center justify-center gap-2 transition-all"
+                disabled={labelStatus?.status === 'running'}
+                className={`w-full py-3 rounded-lg font-medium flex items-center justify-center gap-2 transition-all ${
+                  labelStatus?.status === 'running'
+                    ? 'bg-zinc-300 dark:bg-zinc-700 text-zinc-500 cursor-not-allowed'
+                    : 'bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 text-white'
+                }`}
               >
                 <Zap size={18} />
                 {t('autoLabelAll')}
               </button>
 
-              {labelProgress && (
+              {labelProgress && labelStatus && labelStatus.status === 'running' && (() => {
+                const current = labelStatus.current || 0;
+                const total = labelStatus.total || 1;
+                const progressPercent = (current / total) * 100;
+                
+                return (
+                  <div className="bg-gradient-to-br from-violet-50 to-purple-50 dark:from-violet-950/30 dark:to-purple-950/30 rounded-lg p-4 border-2 border-violet-200 dark:border-violet-800 space-y-3">
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-zinc-700 dark:text-zinc-200 font-medium">
+                        🤖 Auto-labeling: {current}/{total} samples
+                      </span>
+                      <span className="text-xs font-mono text-violet-600 dark:text-violet-400 font-semibold">
+                        {progressPercent.toFixed(1)}%
+                      </span>
+                    </div>
+                    
+                    <div className="relative w-full h-4 bg-white/30 dark:bg-zinc-800/50 rounded-full overflow-hidden shadow-inner border border-violet-300 dark:border-violet-700">
+                      <div 
+                        className="absolute top-0 left-0 h-full bg-gradient-to-r from-purple-500 to-pink-500 transition-all duration-300 ease-out"
+                        style={{ width: `${Math.min(progressPercent, 100)}%` }}
+                      />
+                      <div className="absolute inset-0 flex items-center justify-center text-xs font-medium text-white drop-shadow-md">
+                        {current}/{total}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })()}
+              
+              {labelProgress && (!labelStatus || labelStatus.status !== 'running') && (
                 <div className="bg-gradient-to-r from-violet-50 to-purple-50 dark:from-violet-950/30 dark:to-purple-950/30 rounded-lg p-3 text-sm text-zinc-700 dark:text-zinc-300 border-2 border-violet-200 dark:border-violet-800">
                   {labelProgress}
                 </div>
@@ -752,13 +863,48 @@ export const TrainingPanel: React.FC<TrainingPanelProps> = () => {
                   />
                   <button
                     onClick={handlePreprocess}
-                    className="px-4 py-2 bg-purple-500 hover:bg-purple-600 text-white rounded-lg text-sm font-medium flex items-center gap-2 transition-colors"
+                    disabled={preprocessStatus?.status === 'running'}
+                    className={`px-4 py-2 rounded-lg text-sm font-medium flex items-center gap-2 transition-colors ${
+                      preprocessStatus?.status === 'running'
+                        ? 'bg-zinc-300 dark:bg-zinc-700 text-zinc-500 cursor-not-allowed'
+                        : 'bg-purple-500 hover:bg-purple-600 text-white'
+                    }`}
                   >
                     <Zap size={16} />
                     {t('preprocess')}
                   </button>
                 </div>
-                {preprocessProgress && (
+                
+                {preprocessProgress && preprocessStatus && preprocessStatus.status === 'running' && (() => {
+                  const current = preprocessStatus.current || 0;
+                  const total = preprocessStatus.total || 1;
+                  const progressPercent = (current / total) * 100;
+                  
+                  return (
+                    <div className="bg-gradient-to-br from-amber-50 to-yellow-50 dark:from-amber-950/30 dark:to-yellow-950/30 rounded-lg p-4 border-2 border-amber-200 dark:border-amber-800 space-y-3">
+                      <div className="flex items-center justify-between text-sm">
+                        <span className="text-zinc-700 dark:text-zinc-200 font-medium">
+                          ⚡ Preprocessing: {current}/{total} samples
+                        </span>
+                        <span className="text-xs font-mono text-amber-600 dark:text-amber-400 font-semibold">
+                          {progressPercent.toFixed(1)}%
+                        </span>
+                      </div>
+                      
+                      <div className="relative w-full h-4 bg-white/30 dark:bg-zinc-800/50 rounded-full overflow-hidden shadow-inner border border-amber-300 dark:border-amber-700">
+                        <div 
+                          className="absolute top-0 left-0 h-full bg-gradient-to-r from-purple-500 to-amber-500 transition-all duration-300 ease-out"
+                          style={{ width: `${Math.min(progressPercent, 100)}%` }}
+                        />
+                        <div className="absolute inset-0 flex items-center justify-center text-xs font-medium text-white drop-shadow-md">
+                          {current}/{total}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })()}
+                
+                {preprocessProgress && (!preprocessStatus || preprocessStatus.status !== 'running') && (
                   <div className="bg-gradient-to-r from-amber-50 to-yellow-50 dark:from-amber-950/30 dark:to-yellow-950/30 rounded-lg px-3 py-2 text-xs text-zinc-700 dark:text-zinc-300 border-2 border-amber-200 dark:border-amber-800">
                     {preprocessProgress}
                   </div>
@@ -1152,7 +1298,7 @@ export const TrainingPanel: React.FC<TrainingPanelProps> = () => {
 
       {/* Edit Sample Modal */}
       {editingSample && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60] p-4">
           <div className="bg-white dark:bg-zinc-900 rounded-xl border border-zinc-200 dark:border-zinc-800 max-w-2xl w-full max-h-[90vh] overflow-y-auto">
             <div className="sticky top-0 bg-white dark:bg-zinc-900 border-b border-zinc-200 dark:border-zinc-800 p-4 flex items-center justify-between">
               <h3 className="text-lg font-semibold text-zinc-900 dark:text-white flex items-center gap-2">

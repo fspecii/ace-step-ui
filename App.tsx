@@ -798,7 +798,7 @@ function AppContent() {
 
     // Show confirmation dialog
     const confirmed = window.confirm(
-      `Are you sure you want to delete "${song.title}"? This action cannot be undone.`
+      t('deleteSongConfirm').replace('{title}', song.title)
     );
 
     if (!confirmed) return;
@@ -835,10 +835,10 @@ function AppContent() {
       // Remove from play queue if present
       setPlayQueue(prev => prev.filter(s => s.id !== song.id));
 
-      showToast('Song deleted successfully');
+      showToast(t('songDeleted'));
     } catch (error) {
       console.error('Failed to delete song:', error);
-      showToast('Failed to delete song', 'error');
+      showToast(t('failedToDeleteSong'), 'error');
     }
   };
 
@@ -1161,7 +1161,7 @@ function AppContent() {
 
       {/* Mobile Details Modal */}
       {showMobileDetails && selectedSong && (
-        <div className="fixed inset-0 z-50 flex justify-end xl:hidden">
+        <div className="fixed inset-0 z-[60] flex justify-end xl:hidden">
           <div
             className="absolute inset-0 bg-black/60 backdrop-blur-sm animate-in fade-in"
             onClick={() => setShowMobileDetails(false)}

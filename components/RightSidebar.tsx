@@ -121,7 +121,7 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({ song, onClose, onOpe
             </div>
 
             <div className="flex-1 overflow-y-auto custom-scrollbar">
-                <div className="p-5 space-y-6">
+                <div className="p-5 pb-24 lg:pb-32 space-y-6">
 
                     {/* Cover Art */}
                     <div

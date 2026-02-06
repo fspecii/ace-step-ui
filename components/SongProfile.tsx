@@ -225,7 +225,7 @@ export const SongProfile: React.FC<SongProfileProps> = ({ songId, onBack, onPlay
 
             {/* Content */}
             <div className="flex-1 overflow-y-auto">
-                <div className="max-w-3xl mx-auto px-4 md:px-6 py-4 md:py-6">
+                <div className="max-w-3xl mx-auto px-4 md:px-6 py-4 md:py-6 pb-24 lg:pb-32">
 
                     {/* Left Column: Song Details */}
                     <div className="space-y-4 md:space-y-6">

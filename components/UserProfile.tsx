@@ -147,7 +147,7 @@ export const UserProfile: React.FC<UserProfileProps> = ({ username, onBack, onPl
             loadUserProfile();
         } catch (error) {
             console.error('Failed to update profile:', error);
-            alert('Failed to update profile');
+            alert(t('profileUpdateFailed'));
         } finally {
             setIsSaving(false);
             setUploadingAvatar(false);
@@ -235,7 +235,7 @@ export const UserProfile: React.FC<UserProfileProps> = ({ username, onBack, onPl
     const displaySongs = songsTab === 'recent' ? publicSongs : [...publicSongs].sort((a, b) => (b.likeCount || 0) - (a.likeCount || 0));
 
     return (
-        <div className="w-full h-full flex flex-col bg-zinc-50 dark:bg-black overflow-y-auto relative">
+        <div className="w-full h-full flex flex-col bg-zinc-50 dark:bg-black overflow-y-auto pb-24 lg:pb-32 relative">
             {/* Hero Banner */}
             <div className="relative group/banner">
                 {/* Background Banner */}
@@ -596,7 +596,7 @@ export const UserProfile: React.FC<UserProfileProps> = ({ username, onBack, onPl
 
             {/* Edit Profile Modal */}
             {isEditModalOpen && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 dark:bg-black/80 backdrop-blur-sm p-4">
+                <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 dark:bg-black/80 backdrop-blur-sm p-4">
                     <div className="w-full max-w-lg bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-200 max-h-[90vh] overflow-y-auto">
                         <div className="px-4 md:px-6 py-4 border-b border-zinc-200 dark:border-zinc-800 flex items-center justify-between sticky top-0 bg-white dark:bg-zinc-900 z-10">
                             <h2 className="text-lg md:text-xl font-bold text-zinc-900 dark:text-white">{t('editProfile')}</h2>

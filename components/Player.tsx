@@ -555,6 +555,12 @@ export const Player: React.FC<PlayerProps> = ({
                                         className="h-full bg-zinc-700 dark:bg-white/70 rounded-full"
                                         style={{ width: `${volume * 100}%` }}
                                     />
+                                    <div
+                                        className="absolute top-1/2 -translate-y-1/2 w-3.5 h-3.5 bg-zinc-700 dark:bg-white/70 rounded-full shadow pointer-events-none"
+                                        style={{
+                                            left: `clamp(0px, calc(${volume * 100}% - 7px), calc(100% - 14px))`
+                                        }}
+                                    />
                                 </div>
                             </div>
 

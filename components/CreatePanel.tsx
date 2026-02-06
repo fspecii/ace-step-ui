@@ -748,7 +748,7 @@ export const CreatePanel: React.FC<CreatePanelProps> = ({ onGenerate, isGenerati
 
   return (
     <div className="flex flex-col h-full bg-zinc-50 dark:bg-suno-panel w-full overflow-y-auto custom-scrollbar transition-colors duration-300">
-      <div className="p-4 pt-14 md:pt-4 space-y-5">
+      <div className="p-4 pt-14 md:pt-4 pb-24 lg:pb-32 space-y-5">
         <input
           ref={referenceInputRef}
           type="file"

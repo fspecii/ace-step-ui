@@ -287,6 +287,12 @@ export const translations = {
     loginToGenerate: 'Please login to generate music',
     uploadFailed: 'Upload failed',
     formatFailed: 'Format failed',
+    formatFailedDetail: 'Format failed. Make sure the LLM is initialized.',
+    formatFailedLlmUnavailable: 'Format failed. The LLM may not be available.',
+    deleteSongConfirm: 'Are you sure you want to delete "{title}"? This action cannot be undone.',
+    profileUpdateFailed: 'Failed to update profile',
+    ffmpegLoadFailed: 'Failed to load video encoder. Please refresh and try again.',
+    videoRenderFailed: 'Video rendering failed. Please try again.',
     
     // SongList / Filters
     searchYourSongs: 'Search your songs...',
@@ -826,6 +832,12 @@ export const translations = {
     loginToGenerate: '请登录以生成音乐',
     uploadFailed: '上传失败',
     formatFailed: '格式化失败',
+    formatFailedDetail: '格式化失败。请确保 LLM 已初始化。',
+    formatFailedLlmUnavailable: '格式化失败。LLM 可能不可用。',
+    deleteSongConfirm: '确定要删除"{title}"吗？此操作无法撤销。',
+    profileUpdateFailed: '更新个人资料失败',
+    ffmpegLoadFailed: '加载视频编码器失败。请刷新后重试。',
+    videoRenderFailed: '视频渲染失败。请重试。',
     
     // SongList / Filters
     searchYourSongs: '搜索你的歌曲...',

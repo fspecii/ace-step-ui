@@ -634,12 +634,6 @@ export const trainingApi = {
     error?: string;
   }> => api(`/api/training/dataset/auto-label-status/${taskId}`, { method: 'GET', token }),
 
-  getSamples: (token: string): Promise<{
-    samples: any[];
-    total: number;
-    labeled_count: number;
-  }> => api('/api/training/dataset/samples', { method: 'GET', token }),
-
   saveDataset: (params: {
     save_path: string;
     dataset_name?: string;
@@ -659,6 +653,28 @@ export const trainingApi = {
     output_dir: string;
     num_tensors: number;
   }> => api('/api/training/dataset/preprocess', { method: 'POST', body: params, token }),
+
+  preprocessDatasetAsync: (params: {
+    output_dir: string;
+  }, token: string): Promise<{
+    task_id: string;
+    message: string;
+    total: number;
+  }> => api('/api/training/dataset/preprocess-async', { method: 'POST', body: params, token }),
+
+  getPreprocessStatus: (taskId: string, token: string): Promise<{
+    task_id: string;
+    status: 'running' | 'completed' | 'failed';
+    progress: string;
+    current: number;
+    total: number;
+    result?: {
+      message: string;
+      output_dir: string;
+      num_tensors: number;
+    };
+    error?: string;
+  }> => api(`/api/training/dataset/preprocess-status/${taskId}`, { method: 'GET', token }),
 
   getSamples: (token: string): Promise<{
     dataset_name: string;
