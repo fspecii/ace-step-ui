@@ -15,6 +15,26 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, t
     const { user } = useAuth();
     const [isEditProfileOpen, setIsEditProfileOpen] = useState(false);
 
+    // LM Settings State
+    const [lmBackend, setLmBackend] = useState<'gemini' | 'koboldcpp' | 'local'>(() => {
+        return (localStorage.getItem('ace-lm-backend') as any) || 'local';
+    });
+    const [geminiApiKey, setGeminiApiKey] = useState(() => {
+        return localStorage.getItem('ace-gemini-api-key') || '';
+    });
+    const [koboldApiUrl, setKoboldApiUrl] = useState(() => {
+        return localStorage.getItem('ace-kobold-api-url') || 'http://localhost:5001/api/v1/generate';
+    });
+    const [lyricsPrompt, setLyricsPrompt] = useState(() => {
+        return localStorage.getItem('ace-lyrics-prompt') || 'Generate professional song lyrics based on the topic: "{{topic}}". \nStyle requested: {{style}}. \nFormat with [Verse], [Chorus] headers. \nReturn only the lyrics.';
+    });
+    const [stylePrompt, setStylePrompt] = useState(() => {
+        return localStorage.getItem('ace-style-prompt') || 'Based on the user topic: "{{topic}}", suggest a detailed music style description (genre, mood, instruments). \nKeep it concise (1-2 sentences).';
+    });
+    const [titlePrompt, setTitlePrompt] = useState(() => {
+        return localStorage.getItem('ace-title-prompt') || 'Based on the lyrics or topic: "{{topic}}", suggest a catchy song title. \nReturn only the title.';
+    });
+
     if (!isOpen || !user) {
         if (isEditProfileOpen && user) {
             return (
@@ -127,6 +147,113 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, t
                                 >
                                     Dark
                                 </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* LM Settings Section */}
+                    <div className="space-y-6 pt-4 border-t border-zinc-200 dark:border-white/5">
+                        <div className="flex items-center gap-2 text-zinc-900 dark:text-white">
+                            <Edit3 size={20} />
+                            <h3 className="font-semibold">AI Text Generation (LM)</h3>
+                        </div>
+                        
+                        <div className="pl-7 space-y-4">
+                            <div className="space-y-2">
+                                <label className="text-sm font-medium text-zinc-700 dark:text-zinc-300">Backend</label>
+                                <div className="flex flex-wrap gap-2">
+                                    {['gemini', 'koboldcpp', 'local'].map((b) => (
+                                        <button
+                                            key={b}
+                                            onClick={() => {
+                                                setLmBackend(b as any);
+                                                localStorage.setItem('ace-lm-backend', b);
+                                            }}
+                                            className={`px-4 py-2 rounded-lg text-sm font-medium border transition-colors ${
+                                                lmBackend === b
+                                                    ? 'bg-indigo-600 text-white border-indigo-600'
+                                                    : 'bg-transparent text-zinc-600 dark:text-zinc-400 border-zinc-200 dark:border-zinc-700 hover:border-zinc-300 dark:hover:border-zinc-600'
+                                            }`}
+                                        >
+                                            {b === 'gemini' ? 'Google Gemini' : b === 'koboldcpp' ? 'Koboldcpp' : 'Local (ACE-Step)'}
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+
+                            {lmBackend === 'gemini' && (
+                                <div className="space-y-2 animate-in fade-in slide-in-from-top-1">
+                                    <label className="text-sm font-medium text-zinc-700 dark:text-zinc-300">Gemini API Key</label>
+                                    <input
+                                        type="password"
+                                        value={geminiApiKey}
+                                        onChange={(e) => {
+                                            setGeminiApiKey(e.target.value);
+                                            localStorage.setItem('ace-gemini-api-key', e.target.value);
+                                        }}
+                                        placeholder="Enter your Google Gemini API Key"
+                                        className="w-full bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-lg px-4 py-2 text-sm text-zinc-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                                    />
+                                    <p className="text-[11px] text-zinc-500">Used for lyric and style generation.</p>
+                                </div>
+                            )}
+
+                            {lmBackend === 'koboldcpp' && (
+                                <div className="space-y-2 animate-in fade-in slide-in-from-top-1">
+                                    <label className="text-sm font-medium text-zinc-700 dark:text-zinc-300">Koboldcpp API URL</label>
+                                    <input
+                                        type="text"
+                                        value={koboldApiUrl}
+                                        onChange={(e) => {
+                                            setKoboldApiUrl(e.target.value);
+                                            localStorage.setItem('ace-kobold-api-url', e.target.value);
+                                        }}
+                                        placeholder="http://localhost:5001/api/v1/generate"
+                                        className="w-full bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-lg px-4 py-2 text-sm text-zinc-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                                    />
+                                    <p className="text-[11px] text-zinc-500">The base URL for your Koboldcpp instance.</p>
+                                </div>
+                            )}
+
+                            <div className="space-y-3 pt-2">
+                                <div className="space-y-1.5">
+                                    <label className="text-sm font-medium text-zinc-700 dark:text-zinc-300">Lyrics Generation Prompt</label>
+                                    <textarea
+                                        value={lyricsPrompt}
+                                        onChange={(e) => {
+                                            setLyricsPrompt(e.target.value);
+                                            localStorage.setItem('ace-lyrics-prompt', e.target.value);
+                                        }}
+                                        className="w-full h-24 bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-lg px-4 py-2 text-xs font-mono text-zinc-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500 resize-none"
+                                    />
+                                    <p className="text-[10px] text-zinc-500">Use {"{{topic}}"} and {"{{style}}"} as placeholders.</p>
+                                </div>
+
+                                <div className="space-y-1.5">
+                                    <label className="text-sm font-medium text-zinc-700 dark:text-zinc-300">Style Generation Prompt</label>
+                                    <textarea
+                                        value={stylePrompt}
+                                        onChange={(e) => {
+                                            setStylePrompt(e.target.value);
+                                            localStorage.setItem('ace-style-prompt', e.target.value);
+                                        }}
+                                        className="w-full h-24 bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-lg px-4 py-2 text-xs font-mono text-zinc-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500 resize-none"
+                                    />
+                                    <p className="text-[10px] text-zinc-500">Use {"{{topic}}"} as placeholder.</p>
+                                </div>
+
+                                <div className="space-y-1.5">
+                                    <label className="text-sm font-medium text-zinc-700 dark:text-zinc-300">Title Generation Prompt</label>
+                                    <textarea
+                                        value={titlePrompt}
+                                        onChange={(e) => {
+                                            setTitlePrompt(e.target.value);
+                                            localStorage.setItem('ace-title-prompt', e.target.value);
+                                        }}
+                                        className="w-full h-24 bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-lg px-4 py-2 text-xs font-mono text-zinc-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500 resize-none"
+                                    />
+                                    <p className="text-[10px] text-zinc-500">Use {"{{topic}}"} as placeholder.</p>
+                                </div>
                             </div>
                         </div>
                     </div>

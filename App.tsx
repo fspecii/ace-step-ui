@@ -15,6 +15,7 @@ import { Song, GenerationParams, View, Playlist } from './types';
 import { generateApi, songsApi, playlistsApi, getAudioUrl } from './services/api';
 import { useAuth } from './context/AuthContext';
 import { useResponsive } from './context/ResponsiveContext';
+import { lmService } from './services/lmService';
 import { List } from 'lucide-react';
 import { PlaylistDetail } from './components/PlaylistDetail';
 import { Toast, ToastType } from './components/Toast';
@@ -28,9 +29,10 @@ export default function App() {
   // Auth
   const { user, token, isAuthenticated, isLoading: authLoading, setupUser, logout } = useAuth();
   const [showUsernameModal, setShowUsernameModal] = useState(false);
-  // Track multiple concurrent generation jobs
-  const activeJobsRef = useRef<Map<string, { tempId: string; pollInterval: ReturnType<typeof setInterval> }>>(new Map());
+  const activeJobsRef = useRef<Map<string, { tempId: string, pollInterval: NodeJS.Timeout }>>(new Map());
   const [activeJobCount, setActiveJobCount] = useState(0);
+  const radioStartedRef = useRef(false);
+  const generationLockRef = useRef(false);
 
   // Theme State
   const [theme, setTheme] = useState<'dark' | 'light'>(() => {
@@ -62,6 +64,8 @@ export default function App() {
   const [volume, setVolume] = useState(0.8);
   const [isShuffle, setIsShuffle] = useState(false);
   const [repeatMode, setRepeatMode] = useState<'none' | 'all' | 'one'>('all');
+  const [isRadioMode, setIsRadioMode] = useState(false);
+  const [radioParams, setRadioParams] = useState<GenerationParams | null>(null);
 
   // UI State
   const [isGenerating, setIsGenerating] = useState(false);
@@ -97,7 +101,7 @@ export default function App() {
 
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const pendingSeekRef = useRef<number | null>(null);
-  const playNextRef = useRef<() => void>(() => {});
+  const playNextRef = useRef<() => void>(() => { });
 
   // Mobile Details Modal State
   const [showMobileDetails, setShowMobileDetails] = useState(false);
@@ -328,6 +332,35 @@ export default function App() {
     loadSongs();
   }, [isAuthenticated, token]);
 
+  // Re-sort songs when Radio Mode changes to ensure correct display order
+  useEffect(() => {
+    setSongs(prev => {
+      const sorted = [...prev].sort((a, b) => {
+        const timeA = new Date(a.createdAt).getTime();
+        const timeB = new Date(b.createdAt).getTime();
+        return isRadioMode ? timeA - timeB : timeB - timeA;
+      });
+      return sorted;
+    });
+  }, [isRadioMode]);
+
+  // Sync currentSong with updated song references from songs list
+  // This is crucial for Radio Mode to pick up audioUrl when generation finishes
+  useEffect(() => {
+    if (currentSong) {
+      const updated = songs.find(s => s.id === currentSong.id);
+      if (updated && updated !== currentSong) {
+        setCurrentSong(updated);
+      }
+    }
+    if (selectedSong) {
+      const updated = songs.find(s => s.id === selectedSong.id);
+      if (updated && updated !== selectedSong) {
+        setSelectedSong(updated);
+      }
+    }
+  }, [songs, currentSong, selectedSong]);
+
   const loadReferenceTracks = useCallback(async () => {
     if (!isAuthenticated || !token) return;
     try {
@@ -362,15 +395,58 @@ export default function App() {
 
   const playNext = useCallback(() => {
     if (!currentSong) return;
-    const queue = getActiveQueue(currentSong);
+
+    // In Radio Mode, always use the dynamic 'songs' list as the source of truth.
+    // This ensures newly generated songs are immediately picked up.
+    // Otherwise, use the active queue.
+    const queue = isRadioMode ? songs : getActiveQueue(currentSong);
+
     if (queue.length === 0) return;
 
-    const currentIndex = queueIndex >= 0 && queue[queueIndex]?.id === currentSong.id
-      ? queueIndex
-      : queue.findIndex(s => s.id === currentSong.id);
+    // Find current index in the chosen queue
+    const currentIndex = queue.findIndex(s => s.id === currentSong.id);
     if (currentIndex === -1) return;
 
-    if (repeatMode === 'one') {
+    // Determine Next Index
+    let nextIndex;
+    if (isShuffle && !isRadioMode) { // Shuffle makes no sense in Radio Mode (chronological)
+      // Simple shuffle logic
+      nextIndex = Math.floor(Math.random() * queue.length);
+      // Avoid repeating same song if possible
+      if (queue.length > 1 && nextIndex === currentIndex) {
+        nextIndex = (nextIndex + 1) % queue.length;
+      }
+    } else {
+      // Sequential
+      nextIndex = (currentIndex + 1) % queue.length;
+    }
+
+    // Radio Mode Logic: Stop at end of list (don't wrap to old songs)
+    if (isRadioMode) {
+      // If we wrapped around to 0, it means we reached the end.
+      // In "Append" mode (Oldest First), the newest song is at end.
+      // If we are at end, we wait for next song (which should be generating).
+      if (nextIndex === 0 && currentIndex === queue.length - 1) {
+        // End of list. Stop playing. The 'useEffect' trigger should pick up when new song arrives?
+        // Or if new song IS ready (already appended), nextIndex wouldn't be 0 yet?
+        // Wait, (currentIndex + 1) % length.
+        // If length is 5. Current is 4. Next is 0.
+        // We want to stop.
+        setIsPlaying(false);
+        return;
+      }
+    }
+
+    const nextSong = queue[nextIndex];
+
+    // Safety: Don't play if generating or invalid
+    if (!nextSong || (isRadioMode && (nextSong.isGenerating || !nextSong.audioUrl))) {
+      setIsPlaying(false);
+      return;
+    }
+
+    // Normal Transition
+    if (repeatMode === 'one' && !isRadioMode) {
       if (audioRef.current) {
         audioRef.current.currentTime = 0;
         audioRef.current.play();
@@ -378,20 +454,10 @@ export default function App() {
       return;
     }
 
-    let nextIndex;
-    if (isShuffle) {
-      do {
-        nextIndex = Math.floor(Math.random() * queue.length);
-      } while (queue.length > 1 && nextIndex === currentIndex);
-    } else {
-      nextIndex = (currentIndex + 1) % queue.length;
-    }
-
-    const nextSong = queue[nextIndex];
     setQueueIndex(nextIndex);
     setCurrentSong(nextSong);
     setIsPlaying(true);
-  }, [currentSong, queueIndex, isShuffle, repeatMode, playQueue, songs]);
+  }, [currentSong, queueIndex, isShuffle, repeatMode, playQueue, songs, isRadioMode]);
 
   const playPrevious = useCallback(() => {
     if (!currentSong) return;
@@ -422,6 +488,78 @@ export default function App() {
   useEffect(() => {
     playNextRef.current = playNext;
   }, [playNext]);
+
+  // Radio Mode Logic: Trigger next generation
+  const generateNextRadioSong = useCallback(async (baseParams: GenerationParams) => {
+    // Robust Locking
+    if (generationLockRef.current || isGenerating) return;
+    generationLockRef.current = true;
+
+    try {
+      // 1. Force batch size to 1 for Radio mode
+      const newParams = { ...baseParams, batchSize: 1 };
+
+      // 2. Extract topic
+      const topic = newParams.songDescription || newParams.style || "Free style";
+
+      // 3. Generate new Style/Lyrics/Title using lmService
+      setIsGenerating(true);
+
+      const style = await lmService.generateStyle(topic);
+      const lyrics = await lmService.generateLyrics(topic, style);
+      const title = await lmService.generateTitle(topic);
+
+      // 4. Update params with new unique content
+      newParams.style = style;
+      newParams.lyrics = lyrics;
+      newParams.title = title;
+      newParams.prompt = lyrics;
+
+      // 5. Trigger generation
+      // setIsGenerating(false); // REMOVED: Caused race condition re-triggering useEffect
+
+      await handleGenerate(newParams);
+
+    } catch (error) {
+      console.error("Failed to generate next radio song:", error);
+      setIsGenerating(false);
+      await handleGenerate({ ...baseParams, batchSize: 1 });
+    } finally {
+      // Release lock after initiation
+      generationLockRef.current = false;
+    }
+  }, [isGenerating, isRadioMode]);
+
+  useEffect(() => {
+    if (!isRadioMode || !radioParams) return;
+
+    // Case 1: Initial Start via Ref (prevents double generation)
+    if (radioStartedRef.current) {
+      radioStartedRef.current = false;
+      generateNextRadioSong(radioParams);
+      return;
+    }
+
+    // Case 2: Standard Loop
+    // Only buffer if playing, not currently generating, and we have songs in the list.
+    if (isPlaying && currentSong && !isGenerating && !generationLockRef.current && songs.length > 0) {
+      // If we are playing the LATEST song, generate the next one.
+      /* Loop Logic */
+      if (songs.length > 0) {
+        const newestSong = songs[songs.length - 1]; // Oldest First -> Last is newest
+
+        // Strict Double-Generation Guard:
+        // If the newest song is ALREADY generating (temp), do NOT trigger another one.
+        if (newestSong.isGenerating) return;
+
+        if (newestSong && newestSong.id === currentSong.id) {
+          // Current song is the last one. Generate next.
+          // Pass params but force batch 1
+          generateNextRadioSong(radioParams);
+        }
+      }
+    }
+  }, [isRadioMode, isPlaying, currentSong, songs, radioParams, isGenerating, generateNextRadioSong]);
 
   // Audio Setup
   useEffect(() => {
@@ -509,7 +647,12 @@ export default function App() {
       }
     };
 
-    if (audio.src !== currentSong.audioUrl) {
+    // Normalize URLs for comparison to avoid unnecessary reloads
+    const getAbsoluteUrl = (url: string) => new URL(url, window.location.href).href;
+    const currentSrc = getAbsoluteUrl(audio.src);
+    const targetSrc = getAbsoluteUrl(currentSong.audioUrl);
+
+    if (currentSrc !== targetSrc) {
       audio.src = currentSong.audioUrl;
       audio.load();
       if (isPlaying) playAudio();
@@ -551,7 +694,7 @@ export default function App() {
     if (!token) return;
     try {
       const response = await songsApi.getMySongs(token);
-      const loadedSongs: Song[] = response.songs.map(s => ({
+      let fetchedSongs: Song[] = response.songs.map(s => ({
         id: s.id,
         title: s.title,
         lyrics: s.lyrics,
@@ -568,35 +711,52 @@ export default function App() {
         creator: s.creator,
         generationParams: (() => {
           try {
-            if (!s.generation_params) return undefined;
-            return typeof s.generation_params === 'string' ? JSON.parse(s.generation_params) : s.generation_params;
+            if (s.generation_params) {
+              return typeof s.generation_params === 'string' ? JSON.parse(s.generation_params) : s.generation_params;
+            }
+            return undefined;
           } catch {
             return undefined;
           }
         })(),
       }));
 
-      // Preserve any generating songs that aren't in the loaded list
       setSongs(prev => {
-        const generatingSongs = prev.filter(s => s.isGenerating);
-        const mergedSongs = [...generatingSongs];
-        for (const song of loadedSongs) {
-          if (!mergedSongs.some(s => s.id === song.id)) {
-            mergedSongs.push(song);
-          }
-        }
-        // Sort by creation date, newest first
-        return mergedSongs.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+        // 1. Keep any local songs that are currently generating (temp songs)
+        // AND are not already in the fetched list
+        const generatingSongs = prev.filter(p =>
+          p.isGenerating && !fetchedSongs.some(f => f.id === p.id)
+        );
+
+        // 2. Merge: Fetched Songs + Generating Songs
+        let mergedSongs = [...fetchedSongs, ...generatingSongs];
+
+        // 3. Sort based on mode
+        // ALWAYS sort by CreatedAt.
+        // Normal Mode: Newest First (Desc)
+        // Radio Mode: Oldest First (Asc) -> So "End" is "Newest"
+        mergedSongs.sort((a, b) => {
+          const timeA = new Date(a.createdAt).getTime();
+          const timeB = new Date(b.createdAt).getTime();
+          return isRadioMode ? timeA - timeB : timeB - timeA;
+        });
+
+        return mergedSongs;
       });
 
-      // If the current selection was a temp/generating song, replace it with newest real song
-      if (selectedSong?.isGenerating || (selectedSong && !loadedSongs.some(s => s.id === selectedSong.id))) {
-        setSelectedSong(loadedSongs[0] ?? null);
-      }
+      // Update selected song if needed (e.g. if it was just loaded)
+      // Note: We avoid doing this in the setSongs callback to keep it pure.
+      // But we can't easily access the NEW state here. 
+      // Just relying on ID persistence is usually enough.
+
     } catch (error) {
-      console.error('Failed to refresh songs:', error);
+      console.error('Failed to load songs', error);
+      if (error instanceof Error && error.message === 'Unauthorized') {
+        logout();
+      }
     }
-  }, [token]);
+  }, [token, logout, isRadioMode]);
+
 
   const beginPollingJob = useCallback((jobId: string, tempId: string) => {
     if (!token) return;
@@ -672,8 +832,13 @@ export default function App() {
     }
 
     setIsGenerating(true);
-    setCurrentView('create');
-    setMobileShowList(false);
+
+    // In Radio Mode, avoid layout thrashing or changing view, 
+    // to prevent audio element unmounting or UI jumping.
+    if (!isRadioMode) {
+      setCurrentView('create');
+      setMobileShowList(false);
+    }
 
     // Create unique temp ID for this job
     const tempId = `temp_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
@@ -690,9 +855,22 @@ export default function App() {
       isPublic: true
     };
 
-    setSongs(prev => [tempSong, ...prev]);
-    setSelectedSong(tempSong);
-    setShowRightSidebar(true);
+    setSongs(prev => {
+      const newSongs = [...prev, tempSong];
+      // Enforce consistent sorting immediately
+      return newSongs.sort((a, b) => {
+        const timeA = new Date(a.createdAt).getTime();
+        const timeB = new Date(b.createdAt).getTime();
+        return isRadioMode ? timeA - timeB : timeB - timeA;
+      });
+    });
+
+    // Only select and show sidebar in normal mode.
+    // In Radio mode, we want to keep listening to the CURRENT song, not jump to the new temp one.
+    if (!isRadioMode) {
+      setSelectedSong(tempSong);
+      setShowRightSidebar(true);
+    }
 
     try {
       const job = await generateApi.startGeneration({
@@ -799,10 +977,16 @@ export default function App() {
               }
             })();
 
-            next.unshift(buildTempSongFromParams(params, tempId, job.created_at));
+            next.push(buildTempSongFromParams(params, tempId, job.created_at));
             existingIds.add(tempId);
           }
-          return next;
+
+          // Sort resumed jobs correctly
+          return next.sort((a, b) => {
+            const timeA = new Date(a.createdAt).getTime();
+            const timeB = new Date(b.createdAt).getTime();
+            return isRadioMode ? timeA - timeB : timeB - timeA;
+          });
         });
 
         for (const job of jobsToResume) {
@@ -828,8 +1012,8 @@ export default function App() {
     const nextQueue = list && list.length > 0
       ? list
       : (playQueue.length > 0 && playQueue.some(s => s.id === song.id))
-          ? playQueue
-          : (songs.some(s => s.id === song.id) ? songs : [song]);
+        ? playQueue
+        : (songs.some(s => s.id === song.id) ? songs : [song]);
     const nextIndex = nextQueue.findIndex(s => s.id === song.id);
     setPlayQueue(nextQueue);
     setQueueIndex(nextIndex);
@@ -1219,6 +1403,19 @@ export default function App() {
             `}>
               <CreatePanel
                 onGenerate={handleGenerate}
+                onStartRadio={(params) => {
+                  setIsRadioMode(true);
+                  setRadioParams(params);
+                  radioStartedRef.current = true;
+                  // Let useEffect handle the first generation to prevent double triggers
+                  showToast('Radio Mode Started! Continuous music coming up.', 'success');
+                }}
+                onStopRadio={() => {
+                  setIsRadioMode(false);
+                  setRadioParams(null);
+                  showToast('Radio Mode Stopped.', 'success');
+                }}
+                isRadioMode={isRadioMode}
                 isGenerating={isGenerating}
                 initialData={reuseData}
                 createdSongs={songs}

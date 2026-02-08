@@ -223,8 +223,14 @@ def main():
     parser.add_argument("--json", action="store_true", help="Output as JSON")
 
     args = parser.parse_args()
+    
+    # Capture original stdout to ensure we can print clean JSON at the end
+    original_stdout = sys.stdout
 
     try:
+        # Redirect stdout to stderr for all intermediate steps/logging
+        sys.stdout = sys.stderr
+
         result = generate(
             # Basic
             prompt=args.prompt,
@@ -274,6 +280,9 @@ def main():
             output_dir=args.output_dir,
         )
 
+        # Restore stdout for the final output
+        sys.stdout = original_stdout
+
         if args.json:
             print(json.dumps(result))
         else:
@@ -281,6 +290,7 @@ def main():
             for path in result['audio_paths']:
                 print(f"  {path}")
     except Exception as e:
+        sys.stdout = original_stdout
         if args.json:
             print(json.dumps({"success": False, "error": str(e)}))
         else:
@@ -288,4 +298,21 @@ def main():
         sys.exit(1)
 
 if __name__ == "__main__":
-    main()
+    # Redirect stdout to stderr to prevent libraries from polluting the output
+    # We only want the final JSON to be on stdout
+    original_stdout = sys.stdout
+    sys.stdout = sys.stderr
+    
+    try:
+        main()
+    except SystemExit as e:
+        # If main calls sys.exit(), we need to catch it to ensure we don't break
+        # But main() prints result before exit.
+        # Ensure we restore stdout if we want to print anything else
+        sys.stdout = original_stdout
+        raise e
+    except Exception as e:
+        sys.stdout = original_stdout
+        # print json error to stdout
+        print(json.dumps({"success": False, "error": str(e)}))
+        sys.exit(1)
