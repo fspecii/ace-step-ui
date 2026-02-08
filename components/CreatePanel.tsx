@@ -3,6 +3,7 @@ import { Sparkles, ChevronDown, Settings2, Trash2, Music2, Sliders, Dices, Hash,
 import { GenerationParams, Song } from '../types';
 import { useAuth } from '../context/AuthContext';
 import { generateApi } from '../services/api';
+import { lmService } from '../services/lmService';
 
 interface ReferenceTrack {
   id: string;
@@ -22,6 +23,9 @@ interface CreatePanelProps {
   createdSongs?: Song[];
   pendingAudioSelection?: { target: 'reference' | 'source'; url: string; title?: string } | null;
   onAudioSelectionApplied?: () => void;
+  onStartRadio?: (params: GenerationParams) => void;
+  onStopRadio?: () => void;
+  isRadioMode?: boolean;
 }
 
 const KEY_SIGNATURES = [
@@ -108,6 +112,9 @@ export const CreatePanel: React.FC<CreatePanelProps> = ({
   createdSongs = [],
   pendingAudioSelection,
   onAudioSelectionApplied,
+  onStartRadio,
+  onStopRadio,
+  isRadioMode = false,
 }) => {
   const { isAuthenticated, token, user } = useAuth();
 
@@ -202,6 +209,9 @@ export const CreatePanel: React.FC<CreatePanelProps> = ({
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [isFormattingStyle, setIsFormattingStyle] = useState(false);
   const [isFormattingLyrics, setIsFormattingLyrics] = useState(false);
+  const [isGeneratingStyle, setIsGeneratingStyle] = useState(false);
+  const [isGeneratingLyrics, setIsGeneratingLyrics] = useState(false);
+  const [isGeneratingTitle, setIsGeneratingTitle] = useState(false);
   const [isDraggingFile, setIsDraggingFile] = useState(false);
   const [dragKind, setDragKind] = useState<'file' | 'audio' | null>(null);
   const referenceInputRef = useRef<HTMLInputElement>(null);
@@ -451,6 +461,69 @@ export const CreatePanel: React.FC<CreatePanelProps> = ({
     e.target.value = '';
   };
 
+  const handleGenerateLyrics = async () => {
+    if (!songDescription && !style) {
+      alert("Please provide a song description or style first.");
+      return;
+    }
+    setIsGeneratingLyrics(true);
+    try {
+      const topic = songDescription || style;
+      const result = await lmService.generateLyrics(topic, style);
+      if (result) {
+        setLyrics(result);
+        setCustomMode(true);
+      }
+    } catch (err) {
+      console.error(err);
+      alert("Failed to generate lyrics: " + (err instanceof Error ? err.message : String(err)));
+    } finally {
+      setIsGeneratingLyrics(false);
+    }
+  };
+
+  const handleGenerateStyle = async () => {
+    if (!songDescription && !lyrics) {
+      alert("Please provide a song description or lyrics first.");
+      return;
+    }
+    setIsGeneratingStyle(true);
+    try {
+      const topic = songDescription || lyrics;
+      const result = await lmService.generateStyle(topic);
+      if (result) {
+        setStyle(result);
+        setCustomMode(true);
+      }
+    } catch (err) {
+      console.error(err);
+      alert("Failed to generate style: " + (err instanceof Error ? err.message : String(err)));
+    } finally {
+      setIsGeneratingStyle(false);
+    }
+  };
+
+  const handleGenerateTitle = async () => {
+    if (!songDescription && !lyrics && !style) {
+      alert("Please provide some information about the song first.");
+      return;
+    }
+    setIsGeneratingTitle(true);
+    try {
+      const topic = songDescription || lyrics || style;
+      const result = await lmService.generateTitle(topic);
+      if (result) {
+        setTitle(result);
+        setCustomMode(true);
+      }
+    } catch (err) {
+      console.error(err);
+      alert("Failed to generate title: " + (err instanceof Error ? err.message : String(err)));
+    } finally {
+      setIsGeneratingTitle(false);
+    }
+  };
+
   // Format handler - uses LLM to enhance style/lyrics and auto-fill parameters
   const handleFormat = async (target: 'style' | 'lyrics') => {
     if (!token || !style.trim()) return;
@@ -460,19 +533,36 @@ export const CreatePanel: React.FC<CreatePanelProps> = ({
       setIsFormattingLyrics(true);
     }
     try {
-      const result = await generateApi.formatInput({
-        caption: style,
-        lyrics: lyrics,
-        bpm: bpm > 0 ? bpm : undefined,
-        duration: duration > 0 ? duration : undefined,
-        keyScale: keyScale || undefined,
-        timeSignature: timeSignature || undefined,
-        temperature: lmTemperature,
-        topK: lmTopK > 0 ? lmTopK : undefined,
-        topP: lmTopP,
-        lmModel: lmModel || 'acestep-5Hz-lm-0.6B',
-        lmBackend: lmBackend || 'pt',
-      }, token);
+      let result;
+      // Try Client-side Gemini first
+      const settings = lmService.getSettings();
+      if (settings.backend === 'gemini' && settings.geminiApiKey) {
+        result = await lmService.formatInput({
+          caption: style,
+          lyrics: lyrics,
+          bpm: bpm > 0 ? bpm : undefined,
+          duration: duration > 0 ? duration : undefined,
+          keyScale: keyScale || undefined,
+          timeSignature: timeSignature || undefined
+        });
+      }
+
+      // If not Gemini or Gemini failed (signaled by FALLBACK_TO_SERVER or null), use Server API
+      if (!result || (result.error === 'FALLBACK_TO_SERVER')) {
+        result = await generateApi.formatInput({
+          caption: style,
+          lyrics: lyrics,
+          bpm: bpm > 0 ? bpm : undefined,
+          duration: duration > 0 ? duration : undefined,
+          keyScale: keyScale || undefined,
+          timeSignature: timeSignature || undefined,
+          temperature: lmTemperature,
+          topK: lmTopK > 0 ? lmTopK : undefined,
+          topP: lmTopP,
+          lmModel: lmModel || 'acestep-5Hz-lm-0.6B',
+          lmBackend: lmBackend || 'pt',
+        }, token);
+      }
 
       if (result.success) {
         // Update fields with LLM-generated values
@@ -728,7 +818,7 @@ export const CreatePanel: React.FC<CreatePanelProps> = ({
     }
   };
 
-  const handleGenerate = () => {
+  const executeGenerate = (mode: 'normal' | 'radio') => {
     const styleWithGender = (() => {
       if (!vocalGender) return style;
       const genderHint = vocalGender === 'male' ? 'Male vocals' : 'Female vocals';
@@ -736,24 +826,25 @@ export const CreatePanel: React.FC<CreatePanelProps> = ({
       return trimmed ? `${trimmed}\n${genderHint}` : genderHint;
     })();
 
-    // Bulk generation: loop bulkCount times
-    for (let i = 0; i < bulkCount; i++) {
+    const count = mode === 'radio' ? 1 : bulkCount;
+
+    // Bulk generation: loop bulkCount times (or once for radio)
+    for (let i = 0; i < count; i++) {
       // Seed handling: first job uses user's seed, rest get random seeds
       let jobSeed = -1;
       if (!randomSeed && i === 0) {
         jobSeed = seed;
       } else if (!randomSeed && i > 0) {
-        // Subsequent jobs get random seeds for variety
         jobSeed = Math.floor(Math.random() * 4294967295);
       }
 
-      onGenerate({
+      const params = {
         customMode,
         songDescription: customMode ? undefined : songDescription,
         prompt: lyrics,
         lyrics,
         style: styleWithGender,
-        title: bulkCount > 1 ? `${title} (${i + 1})` : title,
+        title: count > 1 ? `${title} (${i + 1})` : title,
         instrumental,
         vocalLanguage,
         bpm,
@@ -762,7 +853,7 @@ export const CreatePanel: React.FC<CreatePanelProps> = ({
         duration,
         inferenceSteps,
         guidanceScale,
-        batchSize,
+        batchSize: mode === 'radio' ? 1 : batchSize,
         randomSeed: randomSeed || i > 0, // Force random for subsequent bulk jobs
         seed: jobSeed,
         thinking,
@@ -809,14 +900,23 @@ export const CreatePanel: React.FC<CreatePanelProps> = ({
           return parsed.length ? parsed : undefined;
         })(),
         isFormatCaption,
-      });
+      };
+
+      if (mode === 'radio' && onStartRadio) {
+        onStartRadio(params);
+      } else {
+        onGenerate(params);
+      }
     }
 
     // Reset bulk count after generation
-    if (bulkCount > 1) {
+    if (bulkCount > 1 && mode === 'normal') {
       setBulkCount(1);
     }
   };
+
+  const handleGenerate = () => executeGenerate('normal');
+  const handleRadio = () => executeGenerate('radio');
 
   return (
     <div
@@ -917,6 +1017,24 @@ export const CreatePanel: React.FC<CreatePanelProps> = ({
                 placeholder="A happy pop song about summer adventures with friends..."
                 className="w-full h-32 bg-transparent p-3 text-sm text-zinc-900 dark:text-white placeholder-zinc-400 dark:placeholder-zinc-600 focus:outline-none resize-none"
               />
+              <div className="px-3 pb-3 flex gap-2">
+                <button
+                  onClick={handleGenerateLyrics}
+                  disabled={isGeneratingLyrics || !songDescription}
+                  className="flex-1 flex items-center justify-center gap-2 py-2 bg-zinc-100 dark:bg-white/5 hover:bg-zinc-200 dark:hover:bg-white/10 text-zinc-600 dark:text-zinc-300 rounded-lg text-xs font-bold transition-all disabled:opacity-50"
+                >
+                  {isGeneratingLyrics ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />}
+                  Write Lyrics
+                </button>
+                <button
+                  onClick={handleGenerateStyle}
+                  disabled={isGeneratingStyle || !songDescription}
+                  className="flex-1 flex items-center justify-center gap-2 py-2 bg-zinc-100 dark:bg-white/5 hover:bg-zinc-200 dark:hover:bg-white/10 text-zinc-600 dark:text-zinc-300 rounded-lg text-xs font-bold transition-all disabled:opacity-50"
+                >
+                  {isGeneratingStyle ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />}
+                  Suggest Style
+                </button>
+              </div>
             </div>
 
             {/* Vocal Language (Simple) */}
@@ -1066,22 +1184,20 @@ export const CreatePanel: React.FC<CreatePanelProps> = ({
                     <button
                       type="button"
                       onClick={() => setAudioTab('reference')}
-                      className={`px-2.5 py-1 rounded-md text-[11px] font-medium transition-all ${
-                        audioTab === 'reference'
-                          ? 'bg-white dark:bg-zinc-700 text-zinc-900 dark:text-white shadow-sm'
-                          : 'text-zinc-500 dark:text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200'
-                      }`}
+                      className={`px-2.5 py-1 rounded-md text-[11px] font-medium transition-all ${audioTab === 'reference'
+                        ? 'bg-white dark:bg-zinc-700 text-zinc-900 dark:text-white shadow-sm'
+                        : 'text-zinc-500 dark:text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200'
+                        }`}
                     >
                       Reference
                     </button>
                     <button
                       type="button"
                       onClick={() => setAudioTab('source')}
-                      className={`px-2.5 py-1 rounded-md text-[11px] font-medium transition-all ${
-                        audioTab === 'source'
-                          ? 'bg-white dark:bg-zinc-700 text-zinc-900 dark:text-white shadow-sm'
-                          : 'text-zinc-500 dark:text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200'
-                      }`}
+                      className={`px-2.5 py-1 rounded-md text-[11px] font-medium transition-all ${audioTab === 'source'
+                        ? 'bg-white dark:bg-zinc-700 text-zinc-900 dark:text-white shadow-sm'
+                        : 'text-zinc-500 dark:text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200'
+                        }`}
                     >
                       Cover
                     </button>
@@ -1100,9 +1216,9 @@ export const CreatePanel: React.FC<CreatePanelProps> = ({
                       className="relative flex-shrink-0 w-10 h-10 rounded-full bg-gradient-to-br from-pink-500 to-purple-600 text-white flex items-center justify-center shadow-lg shadow-pink-500/20 hover:scale-105 transition-transform"
                     >
                       {referencePlaying ? (
-                        <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M6 4h4v16H6V4zm8 0h4v16h-4V4z"/></svg>
+                        <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M6 4h4v16H6V4zm8 0h4v16h-4V4z" /></svg>
                       ) : (
-                        <svg className="w-4 h-4 ml-0.5" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
+                        <svg className="w-4 h-4 ml-0.5" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z" /></svg>
                       )}
                       <span className="absolute -bottom-1 -right-1 text-[8px] font-bold bg-zinc-900 text-white px-1 py-0.5 rounded">
                         {formatTime(referenceDuration)}
@@ -1139,7 +1255,7 @@ export const CreatePanel: React.FC<CreatePanelProps> = ({
                       onClick={() => { setReferenceAudioUrl(''); setReferenceAudioTitle(''); setReferencePlaying(false); setReferenceTime(0); setReferenceDuration(0); }}
                       className="p-1.5 rounded-full hover:bg-zinc-200 dark:hover:bg-white/10 text-zinc-400 hover:text-zinc-600 dark:hover:text-white transition-colors"
                     >
-                      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12"/></svg>
+                      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
                     </button>
                   </div>
                 )}
@@ -1153,9 +1269,9 @@ export const CreatePanel: React.FC<CreatePanelProps> = ({
                       className="relative flex-shrink-0 w-10 h-10 rounded-full bg-gradient-to-br from-emerald-500 to-teal-600 text-white flex items-center justify-center shadow-lg shadow-emerald-500/20 hover:scale-105 transition-transform"
                     >
                       {sourcePlaying ? (
-                        <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M6 4h4v16H6V4zm8 0h4v16h-4V4z"/></svg>
+                        <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M6 4h4v16H6V4zm8 0h4v16h-4V4z" /></svg>
                       ) : (
-                        <svg className="w-4 h-4 ml-0.5" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
+                        <svg className="w-4 h-4 ml-0.5" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z" /></svg>
                       )}
                       <span className="absolute -bottom-1 -right-1 text-[8px] font-bold bg-zinc-900 text-white px-1 py-0.5 rounded">
                         {formatTime(sourceDuration)}
@@ -1192,7 +1308,7 @@ export const CreatePanel: React.FC<CreatePanelProps> = ({
                       onClick={() => { setSourceAudioUrl(''); setSourceAudioTitle(''); setSourcePlaying(false); setSourceTime(0); setSourceDuration(0); }}
                       className="p-1.5 rounded-full hover:bg-zinc-200 dark:hover:bg-white/10 text-zinc-400 hover:text-zinc-600 dark:hover:text-white transition-colors"
                     >
-                      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12"/></svg>
+                      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
                     </button>
                   </div>
                 )}
@@ -1205,7 +1321,7 @@ export const CreatePanel: React.FC<CreatePanelProps> = ({
                     className="flex-1 flex items-center justify-center gap-1.5 rounded-lg px-3 py-2 text-[11px] font-medium bg-zinc-100 dark:bg-white/5 text-zinc-600 dark:text-zinc-300 hover:bg-zinc-200 dark:hover:bg-white/10 transition-colors"
                   >
                     <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3"/>
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3" />
                     </svg>
                     Library
                   </button>
@@ -1221,7 +1337,7 @@ export const CreatePanel: React.FC<CreatePanelProps> = ({
                     className="flex-1 flex items-center justify-center gap-1.5 rounded-lg px-3 py-2 text-[11px] font-medium bg-zinc-100 dark:bg-white/5 text-zinc-600 dark:text-zinc-300 hover:bg-zinc-200 dark:hover:bg-white/10 transition-colors"
                   >
                     <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"/>
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
                     </svg>
                     Upload
                   </button>
@@ -1243,13 +1359,20 @@ export const CreatePanel: React.FC<CreatePanelProps> = ({
                 <div className="flex items-center gap-2">
                   <button
                     onClick={() => setInstrumental(!instrumental)}
-                    className={`px-2.5 py-1 rounded-full text-[10px] font-semibold border transition-colors ${
-                      instrumental
-                        ? 'bg-pink-600 text-white border-pink-500'
-                        : 'bg-white dark:bg-suno-card border-zinc-200 dark:border-white/10 text-zinc-600 dark:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-white/10'
-                    }`}
+                    className={`px-2.5 py-1 rounded-full text-[10px] font-semibold border transition-colors ${instrumental
+                      ? 'bg-pink-600 text-white border-pink-500'
+                      : 'bg-white dark:bg-suno-card border-zinc-200 dark:border-white/10 text-zinc-600 dark:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-white/10'
+                      }`}
                   >
                     {instrumental ? 'Instrumental' : 'Vocal'}
+                  </button>
+                  <button
+                    className={`p-1.5 hover:bg-zinc-200 dark:hover:bg-white/10 rounded transition-colors ${isGeneratingLyrics ? 'text-pink-500' : 'text-zinc-500 hover:text-black dark:hover:text-white'}`}
+                    title="Generate Lyrics"
+                    onClick={handleGenerateLyrics}
+                    disabled={isGeneratingLyrics || (!style.trim() && !songDescription.trim())}
+                  >
+                    {isGeneratingLyrics ? <Loader2 size={14} className="animate-spin" /> : <Music2 size={14} />}
                   </button>
                   <button
                     className={`p-1.5 hover:bg-zinc-200 dark:hover:bg-white/10 rounded transition-colors ${isFormattingLyrics ? 'text-pink-500' : 'text-zinc-500 hover:text-black dark:hover:text-white'}`}
@@ -1291,14 +1414,24 @@ export const CreatePanel: React.FC<CreatePanelProps> = ({
                   <span className="text-xs font-bold text-zinc-500 dark:text-zinc-400 uppercase tracking-wide">Style of Music</span>
                   <p className="text-[11px] text-zinc-400 dark:text-zinc-500 mt-0.5">Genre, mood, instruments, vibe</p>
                 </div>
-                <button
-                  className={`p-1.5 hover:bg-zinc-200 dark:hover:bg-white/10 rounded transition-colors ${isFormattingStyle ? 'text-pink-500' : 'text-zinc-500 hover:text-black dark:hover:text-white'}`}
-                  title="AI Format - Enhance style & auto-fill parameters"
-                  onClick={() => handleFormat('style')}
-                  disabled={isFormattingStyle || !style.trim()}
-                >
-                  {isFormattingStyle ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />}
-                </button>
+                <div className="flex items-center gap-1">
+                  <button
+                    className={`p-1.5 hover:bg-zinc-200 dark:hover:bg-white/10 rounded transition-colors ${isGeneratingStyle ? 'text-pink-500' : 'text-zinc-500 hover:text-black dark:hover:text-white'}`}
+                    title="Suggest Style"
+                    onClick={handleGenerateStyle}
+                    disabled={isGeneratingStyle || (!lyrics.trim() && !songDescription.trim())}
+                  >
+                    {isGeneratingStyle ? <Loader2 size={14} className="animate-spin" /> : <Dices size={14} />}
+                  </button>
+                  <button
+                    className={`p-1.5 hover:bg-zinc-200 dark:hover:bg-white/10 rounded transition-colors ${isFormattingStyle ? 'text-pink-500' : 'text-zinc-500 hover:text-black dark:hover:text-white'}`}
+                    title="AI Format - Enhance style & auto-fill parameters"
+                    onClick={() => handleFormat('style')}
+                    disabled={isFormattingStyle || !style.trim()}
+                  >
+                    {isFormattingStyle ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />}
+                  </button>
+                </div>
               </div>
               <textarea
                 value={style}
@@ -1321,8 +1454,16 @@ export const CreatePanel: React.FC<CreatePanelProps> = ({
 
             {/* Title Input */}
             <div className="bg-white dark:bg-suno-card rounded-xl border border-zinc-200 dark:border-white/5 overflow-hidden">
-              <div className="px-3 py-2.5 text-xs font-bold uppercase tracking-wide text-zinc-500 dark:text-zinc-400 border-b border-zinc-100 dark:border-white/5 bg-zinc-50 dark:bg-white/5">
-                Title
+              <div className="px-3 py-2.5 text-xs font-bold uppercase tracking-wide text-zinc-500 dark:text-zinc-400 border-b border-zinc-100 dark:border-white/5 bg-zinc-50 dark:bg-white/5 flex items-center justify-between">
+                <span>Title</span>
+                <button
+                  className={`p-1 hover:bg-zinc-200 dark:hover:bg-white/10 rounded transition-colors ${isGeneratingTitle ? 'text-pink-500' : 'text-zinc-500 hover:text-black dark:hover:text-white'}`}
+                  title="Generate Title"
+                  onClick={handleGenerateTitle}
+                  disabled={isGeneratingTitle || (!lyrics.trim() && !style.trim() && !songDescription.trim())}
+                >
+                  {isGeneratingTitle ? <Loader2 size={12} className="animate-spin" /> : <Sparkles size={12} />}
+                </button>
               </div>
               <input
                 type="text"
@@ -1525,11 +1666,10 @@ export const CreatePanel: React.FC<CreatePanelProps> = ({
                   <button
                     key={count}
                     onClick={() => { setBulkCount(count); localStorage.setItem('ace-bulkCount', String(count)); }}
-                    className={`flex-1 py-2 rounded-lg text-xs font-bold transition-all ${
-                      bulkCount === count
-                        ? 'bg-gradient-to-r from-orange-500 to-pink-600 text-white shadow-md'
-                        : 'bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 hover:bg-zinc-200 dark:hover:bg-zinc-700'
-                    }`}
+                    className={`flex-1 py-2 rounded-lg text-xs font-bold transition-all ${bulkCount === count
+                      ? 'bg-gradient-to-r from-orange-500 to-pink-600 text-white shadow-md'
+                      : 'bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 hover:bg-zinc-200 dark:hover:bg-zinc-700'
+                      }`}
                   >
                     {count}
                   </button>
@@ -2033,7 +2173,7 @@ export const CreatePanel: React.FC<CreatePanelProps> = ({
                   className="p-1.5 rounded-lg hover:bg-zinc-100 dark:hover:bg-white/10 text-zinc-400 hover:text-zinc-900 dark:hover:text-white transition-colors"
                 >
                   <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12"/>
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                   </svg>
                 </button>
               </div>
@@ -2097,22 +2237,20 @@ export const CreatePanel: React.FC<CreatePanelProps> = ({
                   <button
                     type="button"
                     onClick={() => setLibraryTab('uploads')}
-                    className={`px-3 py-1 rounded-full text-xs font-semibold transition-colors ${
-                      libraryTab === 'uploads'
-                        ? 'bg-zinc-900 dark:bg-white text-white dark:text-zinc-900'
-                        : 'text-zinc-500 dark:text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200'
-                    }`}
+                    className={`px-3 py-1 rounded-full text-xs font-semibold transition-colors ${libraryTab === 'uploads'
+                      ? 'bg-zinc-900 dark:bg-white text-white dark:text-zinc-900'
+                      : 'text-zinc-500 dark:text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200'
+                      }`}
                   >
                     Uploaded
                   </button>
                   <button
                     type="button"
                     onClick={() => setLibraryTab('created')}
-                    className={`px-3 py-1 rounded-full text-xs font-semibold transition-colors ${
-                      libraryTab === 'created'
-                        ? 'bg-zinc-900 dark:bg-white text-white dark:text-zinc-900'
-                        : 'text-zinc-500 dark:text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200'
-                    }`}
+                    className={`px-3 py-1 rounded-full text-xs font-semibold transition-colors ${libraryTab === 'created'
+                      ? 'bg-zinc-900 dark:bg-white text-white dark:text-zinc-900'
+                      : 'text-zinc-500 dark:text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200'
+                      }`}
                   >
                     Created
                   </button>
@@ -2339,17 +2477,30 @@ export const CreatePanel: React.FC<CreatePanelProps> = ({
 
       {/* Footer Create Button */}
       <div className="p-4 mt-auto sticky bottom-0 bg-zinc-50/95 dark:bg-suno-panel/95 backdrop-blur-sm z-10 border-t border-zinc-200 dark:border-white/5 space-y-3">
-        <button
-          onClick={handleGenerate}
-          className="w-full h-12 rounded-xl font-bold text-base flex items-center justify-center gap-2 transition-all transform active:scale-[0.98] bg-gradient-to-r from-orange-500 to-pink-600 text-white shadow-lg hover:brightness-110"
-        >
-          <Sparkles size={18} />
-          <span>
-            {bulkCount > 1
-              ? `Create ${bulkCount} Jobs (${bulkCount * batchSize} tracks)`
-              : `Create${batchSize > 1 ? ` (${batchSize} variations)` : ''}`}
-          </span>
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={isRadioMode ? onStopRadio : handleRadio}
+            className={`flex-1 h-12 rounded-xl font-bold text-base flex items-center justify-center gap-2 transition-all transform active:scale-[0.98] border shadow-md group ${isRadioMode
+                ? 'bg-pink-600 text-white border-pink-500 hover:bg-pink-700'
+                : 'bg-white dark:bg-zinc-800 text-zinc-900 dark:text-white border-zinc-200 dark:border-white/10 hover:bg-zinc-50 dark:hover:bg-zinc-700'
+              }`}
+            title={isRadioMode ? "Stop Radio Mode" : "Start Radio Mode"}
+          >
+            <Music2 size={18} className={`${isRadioMode ? 'text-white' : 'text-pink-600 dark:text-pink-400'} group-hover:scale-110 transition-transform ${isRadioMode ? 'animate-pulse' : ''}`} />
+            <span>{isRadioMode ? 'Radio ON' : 'Radio'}</span>
+          </button>
+          <button
+            onClick={handleGenerate}
+            className="flex-[3] h-12 rounded-xl font-bold text-base flex items-center justify-center gap-2 transition-all transform active:scale-[0.98] bg-gradient-to-r from-orange-500 to-pink-600 text-white shadow-lg hover:brightness-110"
+          >
+            <Sparkles size={18} />
+            <span>
+              {bulkCount > 1
+                ? `Create ${bulkCount} Jobs (${bulkCount * batchSize} tracks)`
+                : `Create${batchSize > 1 ? ` (${batchSize} variations)` : ''}`}
+            </span>
+          </button>
+        </div>
       </div>
     </div>
   );
