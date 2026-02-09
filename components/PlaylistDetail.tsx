@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Song, Playlist, playlistsApi, songsApi, getAudioUrl } from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import { ArrowLeft, Play, MoreHorizontal, Clock, Calendar, Shuffle, Trash2, Mic2, Music } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 
 interface PlaylistDetailProps {
     playlistId: string;
@@ -13,6 +14,7 @@ interface PlaylistDetailProps {
 
 export const PlaylistDetail: React.FC<PlaylistDetailProps> = ({ playlistId, onBack, onPlaySong, onSelect, onNavigateToProfile }) => {
     const { user: currentUser, token } = useAuth();
+    const { t } = useTranslation();
     const [playlist, setPlaylist] = useState<Playlist & { creator_avatar?: string } | null>(null);
     const [songs, setSongs] = useState<Song[]>([]);
     const [loading, setLoading] = useState(true);
@@ -54,7 +56,6 @@ export const PlaylistDetail: React.FC<PlaylistDetailProps> = ({ playlistId, onBa
         }
     };
 
-    // ... (retaining methods handleRemove, handleDelete) ...
     const handleRemoveSong = async (songId: string) => {
         if (!token || !playlist) return;
         try {
@@ -67,7 +68,7 @@ export const PlaylistDetail: React.FC<PlaylistDetailProps> = ({ playlistId, onBa
 
     const handleDeletePlaylist = async () => {
         if (!token || !playlist) return;
-        if (!confirm('Are you sure you want to delete this playlist?')) return;
+        if (!confirm(t('playlist.deleteConfirm'))) return;
         try {
             await playlistsApi.delete(playlist.id, token);
             onBack();
@@ -80,16 +81,16 @@ export const PlaylistDetail: React.FC<PlaylistDetailProps> = ({ playlistId, onBa
         <div className="flex items-center justify-center h-full bg-black">
             <div className="text-zinc-400 gap-2 flex items-center">
                 <div className="w-4 h-4 border-2 border-zinc-400 border-t-transparent rounded-full animate-spin"></div>
-                Loading playlist...
+                {t('playlist.loading')}
             </div>
         </div>
     );
 
     if (!playlist) return (
         <div className="flex flex-col items-center justify-center h-full gap-4 bg-black">
-            <div className="text-zinc-400">Playlist not found</div>
+            <div className="text-zinc-400">{t('playlist.notFound')}</div>
             <button onClick={onBack} className="px-4 py-2 bg-zinc-800 hover:bg-zinc-700 rounded-lg text-white">
-                Go Back
+                {t('common.goBack')}
             </button>
         </div>
     );
@@ -124,7 +125,7 @@ export const PlaylistDetail: React.FC<PlaylistDetailProps> = ({ playlistId, onBa
 
                 {/* Info */}
                 <div className="flex-1 space-y-2 md:space-y-4 text-center md:text-left">
-                    <span className="text-xs font-bold tracking-wider uppercase text-white/80">Playlist</span>
+                    <span className="text-xs font-bold tracking-wider uppercase text-white/80">{t('common.playlist')}</span>
                     <h1 className="text-2xl md:text-5xl lg:text-7xl font-bold text-white tracking-tight leading-none drop-shadow-lg">
                         {playlist.name}
                     </h1>
@@ -147,7 +148,7 @@ export const PlaylistDetail: React.FC<PlaylistDetailProps> = ({ playlistId, onBa
                             </div>
                         )}
                         <span className="w-1 h-1 rounded-full bg-white/50"></span>
-                        <span>{songs.length} songs</span>
+                        <span>{t('playlist.songs', { count: songs.length })}</span>
                         <span className="w-1 h-1 rounded-full bg-white/50 hidden md:block"></span>
                         <span className="text-zinc-400 hidden md:block">
                             {songs.reduce((acc, s) => acc + (s.duration ? (typeof s.duration === 'string' ? 0 : s.duration) : 0), 0) > 0
@@ -180,7 +181,7 @@ export const PlaylistDetail: React.FC<PlaylistDetailProps> = ({ playlistId, onBa
                 <div className="flex-1"></div>
 
                 <div className="text-zinc-400 text-xs md:text-sm">
-                    {playlist.is_public ? 'Public' : 'Private'}
+                    {playlist.is_public ? t('playlist.public') : t('playlist.private')}
                 </div>
             </div>
 
@@ -190,9 +191,9 @@ export const PlaylistDetail: React.FC<PlaylistDetailProps> = ({ playlistId, onBa
                     {/* Desktop Header */}
                     <div className="hidden md:grid grid-cols-[16px_4fr_3fr_2fr_minmax(120px,1fr)] gap-4 px-4 py-2 border-b border-white/10 text-sm font-medium text-zinc-400 mb-2 sticky top-0 bg-[#121212] z-10">
                         <span>#</span>
-                        <span>Title</span>
-                        <span>Artist</span>
-                        <span>Date Added</span>
+                        <span>{t('playlist.table.title')}</span>
+                        <span>{t('playlist.table.artist')}</span>
+                        <span>{t('playlist.table.dateAdded')}</span>
                         <span className="text-right"><Clock size={16} className="inline" /></span>
                     </div>
 
@@ -226,7 +227,7 @@ export const PlaylistDetail: React.FC<PlaylistDetailProps> = ({ playlistId, onBa
                                     <div className="flex flex-col truncate min-w-0">
                                         <span className="font-medium text-white truncate">{song.title}</span>
                                         <span className="text-xs text-zinc-500 group-hover:text-zinc-400 truncate">
-                                            {song.creator || 'Unknown'} <span className="md:hidden">• {song.duration ? `${Math.floor(song.duration / 60)}:${String(Math.floor(song.duration % 60)).padStart(2, '0')}` : '0:00'}</span>
+                                            {song.creator || t('common.unknown')} <span className="md:hidden">• {song.duration ? `${Math.floor(song.duration / 60)}:${String(Math.floor(song.duration % 60)).padStart(2, '0')}` : '0:00'}</span>
                                         </span>
                                     </div>
                                 </div>
@@ -236,12 +237,12 @@ export const PlaylistDetail: React.FC<PlaylistDetailProps> = ({ playlistId, onBa
                                     e.stopPropagation();
                                     song.creator && onNavigateToProfile(song.creator);
                                 }}>
-                                    {song.creator || 'Unknown'}
+                                    {song.creator || t('common.unknown')}
                                 </span>
 
                                 {/* Date Added - hidden on mobile */}
                                 <span className="hidden md:block">
-                                    {song.addedAt ? new Date(song.addedAt).toLocaleDateString() : 'Just now'}
+                                    {song.addedAt ? new Date(song.addedAt).toLocaleDateString() : t('playlist.table.justNow')}
                                 </span>
 
                                 {/* Duration + Actions */}

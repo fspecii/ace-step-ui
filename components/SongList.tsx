@@ -5,6 +5,7 @@ import { useAuth } from '../context/AuthContext';
 import { SongDropdownMenu } from './SongDropdownMenu';
 import { ShareModal } from './ShareModal';
 import { AlbumCover } from './AlbumCover';
+import { useTranslation } from 'react-i18next';
 
 interface SongListProps {
     songs: Song[];
@@ -29,19 +30,8 @@ interface SongListProps {
     onCoverUpload?: (track: { audio_url: string; filename: string }) => void;
 }
 
-// ... existing code ...
-
-
-
 // Define Filter Types
 type FilterType = 'liked' | 'public' | 'private' | 'generating';
-
-const FILTERS: { id: FilterType; label: string; icon: React.ReactNode }[] = [
-    { id: 'liked', label: 'Liked', icon: <ThumbsUp size={16} /> },
-    { id: 'public', label: 'Public', icon: <Globe size={16} /> },
-    { id: 'private', label: 'Private', icon: <Lock size={16} /> },
-    { id: 'generating', label: 'Generating', icon: <Loader2 size={16} /> },
-];
 
 const createDragPreview = (element: HTMLElement) => {
     const clone = element.cloneNode(true) as HTMLElement;
@@ -98,12 +88,20 @@ export const SongList: React.FC<SongListProps> = ({
     onCoverUpload
 }) => {
     const { user } = useAuth();
+    const { t } = useTranslation();
     const [searchQuery, setSearchQuery] = useState('');
     const [activeFilters, setActiveFilters] = useState<Set<FilterType>>(new Set());
     const [isFilterOpen, setIsFilterOpen] = useState(false);
     const [isSelecting, setIsSelecting] = useState(false);
     const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
     const filterRef = useRef<HTMLDivElement>(null);
+
+    const FILTERS: { id: FilterType; label: string; icon: React.ReactNode }[] = [
+        { id: 'liked', label: t('filters.liked'), icon: <ThumbsUp size={16} /> },
+        { id: 'public', label: t('filters.public'), icon: <Globe size={16} /> },
+        { id: 'private', label: t('filters.private'), icon: <Lock size={16} /> },
+        { id: 'generating', label: t('filters.generating'), icon: <Loader2 size={16} /> },
+    ];
 
     // Close filter dropdown when clicking outside
     useEffect(() => {
@@ -202,9 +200,9 @@ export const SongList: React.FC<SongListProps> = ({
                 {/* Header */}
                 <div className="flex flex-col gap-6 mb-8">
                     <div className="flex items-center gap-2 text-sm text-zinc-500 dark:text-zinc-400">
-                        <span className="hover:text-black dark:hover:text-white cursor-pointer transition-colors">Workspaces</span>
+                        <span className="hover:text-black dark:hover:text-white cursor-pointer transition-colors">{t('workspace.title')}</span>
                         <span className="text-zinc-400 dark:text-zinc-600">›</span>
-                        <span className="text-zinc-900 dark:text-white font-medium">My Workspace</span>
+                        <span className="text-zinc-900 dark:text-white font-medium">{t('workspace.my')}</span>
                     </div>
 
                     <div className="flex items-center gap-3">
@@ -213,7 +211,7 @@ export const SongList: React.FC<SongListProps> = ({
                                 type="text"
                                 value={searchQuery}
                                 onChange={(e) => setSearchQuery(e.target.value)}
-                                placeholder="Search your songs..."
+                                placeholder={t('common.searchPlaceholder')}
                                 className="w-full bg-zinc-100 dark:bg-[#121214] border border-zinc-200 dark:border-white/10 rounded-lg pl-10 pr-4 py-2.5 text-sm text-zinc-900 dark:text-white focus:outline-none focus:border-zinc-400 dark:focus:border-white/20 placeholder-zinc-500 dark:placeholder-zinc-600 transition-colors"
                             />
                             <Search className="w-4 h-4 text-zinc-500 absolute left-3 top-3 group-focus-within:text-black dark:group-focus-within:text-white transition-colors" />
@@ -231,14 +229,14 @@ export const SongList: React.FC<SongListProps> = ({
                     `}
                             >
                                 <Filter size={14} fill={activeFilters.size > 0 ? "currentColor" : "none"} />
-                                <span>Filters {activeFilters.size > 0 && `(${activeFilters.size})`}</span>
+                                <span>{t('common.filters')} {activeFilters.size > 0 && `(${activeFilters.size})`}</span>
                             </button>
 
                             {/* Filter Dropdown */}
                             {isFilterOpen && (
                                 <div className="absolute right-0 top-full mt-2 w-56 bg-white dark:bg-[#18181b] border border-zinc-200 dark:border-white/10 rounded-xl shadow-2xl overflow-hidden py-1 z-50 animate-in fade-in zoom-in-95 duration-100 origin-top-right">
                                     <div className="px-3 py-2 text-[10px] font-bold text-zinc-500 uppercase tracking-wider">
-                                        Refine By
+                                        {t('common.refineBy')}
                                     </div>
                                     {FILTERS.map(filter => (
                                         <button
@@ -277,14 +275,14 @@ export const SongList: React.FC<SongListProps> = ({
                                     : 'bg-zinc-100 dark:bg-[#121214] hover:bg-zinc-200 dark:hover:bg-white/5 border-zinc-200 dark:border-white/10 text-zinc-700 dark:text-white'
                                 }`}
                         >
-                            Select
+                            {t('common.select')}
                         </button>
                     </div>
 
                     {isSelecting && (
                         <div className="flex items-center justify-between gap-3 rounded-xl border border-zinc-200 dark:border-white/10 bg-zinc-50 dark:bg-white/5 px-4 py-3">
                             <div className="text-sm text-zinc-600 dark:text-zinc-300">
-                                {selectedSongs.length} selected
+                                {t('common.selected', { count: selectedSongs.length })}
                             </div>
                             <div className="flex items-center gap-2">
                                 <button
@@ -297,7 +295,7 @@ export const SongList: React.FC<SongListProps> = ({
                                     }}
                                     className="px-3 py-1.5 rounded-lg text-xs font-semibold border border-zinc-200 dark:border-white/10 text-zinc-600 dark:text-zinc-300 hover:border-zinc-300 dark:hover:border-white/20"
                                 >
-                                    {allSelected ? 'Clear all' : 'Select all'}
+                                    {allSelected ? t('common.clearAll') : t('common.selectAll')}
                                 </button>
                                 <button
                                     onClick={() => {
@@ -312,7 +310,7 @@ export const SongList: React.FC<SongListProps> = ({
                                         }`}
                                     disabled={!selectedSongs.length}
                                 >
-                                    Delete
+                                    {t('common.delete')}
                                 </button>
                             </div>
                         </div>
@@ -326,12 +324,12 @@ export const SongList: React.FC<SongListProps> = ({
                             <div className="w-16 h-16 rounded-full bg-zinc-100 dark:bg-white/5 flex items-center justify-center">
                                 <Filter size={32} />
                             </div>
-                            <p className="font-medium">No songs match your filters.</p>
+                            <p className="font-medium">{t('songList.empty.title')}</p>
                             <button
                                 onClick={() => { setActiveFilters(new Set()); setSearchQuery(''); }}
                                 className="text-pink-600 dark:text-pink-500 text-sm font-bold hover:underline"
                             >
-                                Clear filters
+                                {t('songList.empty.clearFilters')}
                             </button>
                         </div>
                     ) : (
@@ -446,6 +444,7 @@ const SongItem: React.FC<SongItemProps> = ({
     const [showDropdown, setShowDropdown] = useState(false);
     const [shareModalOpen, setShareModalOpen] = useState(false);
     const [imageError, setImageError] = useState(false);
+    const { t } = useTranslation();
 
     return (
         <>
@@ -457,7 +456,7 @@ const SongItem: React.FC<SongItemProps> = ({
                 e.dataTransfer.effectAllowed = 'copy';
                 e.dataTransfer.setData('application/x-ace-audio', JSON.stringify({
                     url: song.audioUrl,
-                    title: song.title || 'Untitled',
+                    title: song.title || t('common.untitled'),
                     source: 'song',
                 }));
                 const preview = createDragPreview(e.currentTarget);
@@ -515,7 +514,7 @@ const SongItem: React.FC<SongItemProps> = ({
                                 <div className="w-8 h-8 rounded-full bg-amber-500/20 flex items-center justify-center">
                                     <Clock size={16} className="text-amber-400" />
                                 </div>
-                                <span className="text-[10px] font-medium text-amber-400">Queue #{song.queuePosition}</span>
+                                <span className="text-[10px] font-medium text-amber-400">{t('status.queuePos', { n: song.queuePosition })}</span>
                             </>
                         ) : (
                             /* Generating - Music Waveform Animation */
@@ -551,7 +550,7 @@ const SongItem: React.FC<SongItemProps> = ({
                 <div className="space-y-1">
                     <div className="flex items-center gap-2">
                         <h3 className={`font-bold text-lg truncate ${isCurrent ? 'text-pink-600 dark:text-pink-500' : 'text-zinc-900 dark:text-white'}`}>
-                            {song.title || (song.isGenerating ? (song.queuePosition ? "Queued..." : "Creating...") : "Untitled")}
+                            {song.title || (song.isGenerating ? (song.queuePosition ? t('status.queued') : t('status.creating')) : t('common.untitled'))}
                         </h3>
                         <span className="inline-flex items-center justify-center text-[9px] font-bold text-white bg-gradient-to-r from-pink-500 to-purple-500 px-1.5 py-0.5 rounded-sm shadow-sm">
                             v1.5
@@ -574,7 +573,7 @@ const SongItem: React.FC<SongItemProps> = ({
                                 {(song.creator?.[0] || 'U').toUpperCase()}
                             </div>
                             <span className="text-xs font-medium text-zinc-500 dark:text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 transition-colors hover:underline">
-                                {song.creator || 'Unknown'}
+                                {song.creator || t('common.unknown')}
                             </span>
                         </div>
                     </div>
@@ -621,7 +620,7 @@ const SongItem: React.FC<SongItemProps> = ({
                         <button
                             className="p-2 rounded-full hover:bg-zinc-200 dark:hover:bg-white/5 text-zinc-400 hover:text-black dark:hover:text-white transition-colors"
                             onClick={(e) => { e.stopPropagation(); setShareModalOpen(true); }}
-                            title="Share"
+                            title={t('actions.share')}
                         >
                             <Share2 size={16} />
                         </button>
@@ -629,7 +628,7 @@ const SongItem: React.FC<SongItemProps> = ({
                         <button
                             className="p-2 rounded-full hover:bg-zinc-200 dark:hover:bg-white/5 text-zinc-400 hover:text-black dark:hover:text-white transition-colors"
                             onClick={(e) => { e.stopPropagation(); if (onOpenVideo) onOpenVideo(); }}
-                            title="Create Video"
+                            title={t('actions.createVideo')}
                         >
                             <Video size={16} />
                         </button>
@@ -637,7 +636,7 @@ const SongItem: React.FC<SongItemProps> = ({
                         <button
                             className="p-2 rounded-full hover:bg-zinc-200 dark:hover:bg-white/5 text-zinc-400 hover:text-black dark:hover:text-white transition-colors ml-auto"
                             onClick={(e) => { e.stopPropagation(); onAddToPlaylist(); }}
-                            title="Add to Playlist"
+                            title={t('actions.addToPlaylist')}
                         >
                             <ListPlus size={16} />
                         </button>
@@ -646,7 +645,7 @@ const SongItem: React.FC<SongItemProps> = ({
                         <button
                             className="p-2 rounded-full hover:bg-zinc-200 dark:hover:bg-white/5 text-zinc-400 hover:text-black dark:hover:text-white transition-colors xl:hidden"
                             onClick={(e) => { e.stopPropagation(); if (onShowDetails) onShowDetails(); }}
-                            title="Song Details"
+                            title={t('actions.songDetails')}
                         >
                             <Info size={16} />
                         </button>
@@ -683,7 +682,7 @@ const SongItem: React.FC<SongItemProps> = ({
             <div className="text-xs font-mono text-zinc-500 dark:text-zinc-600 self-start pt-1">
                 {song.isGenerating ? (
                     <span className={song.queuePosition ? 'text-amber-500' : 'text-pink-500'}>
-                        {song.queuePosition ? `#${song.queuePosition}` : 'Creating...'}
+                        {song.queuePosition ? `#${song.queuePosition}` : t('status.creating')}
                     </span>
                 ) : song.duration}
             </div>
@@ -705,6 +704,7 @@ const UploadItem: React.FC<{
     onCoverSong?: () => void;
 }> = ({ track, onPlay, onUseAsReference, onCoverSong }) => {
     const title = track.filename.replace(/\.[^/.]+$/, '');
+    const { t } = useTranslation();
     const duration = track.duration
         ? `${Math.floor(track.duration / 60)}:${String(Math.floor(track.duration % 60)).padStart(2, '0')}`
         : '--:--';
@@ -714,7 +714,7 @@ const UploadItem: React.FC<{
                 id: `upload_${track.id}`,
                 title,
                 lyrics: '',
-                style: 'Upload',
+                style: t('common.upload'),
                 coverUrl: '',
                 duration,
                 createdAt: new Date(),

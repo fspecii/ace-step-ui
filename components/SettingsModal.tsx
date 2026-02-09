@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
-import { X, User as UserIcon, Palette, Info, Edit3, ExternalLink, Github } from 'lucide-react';
+import { X, User as UserIcon, Palette, Info, Edit3, ExternalLink, Github, Globe } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { EditProfileModal } from './EditProfileModal';
+import { useTranslation } from 'react-i18next';
 
 interface SettingsModalProps {
     isOpen: boolean;
@@ -14,6 +15,11 @@ interface SettingsModalProps {
 export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, theme, onToggleTheme, onNavigateToProfile }) => {
     const { user } = useAuth();
     const [isEditProfileOpen, setIsEditProfileOpen] = useState(false);
+    const { t, i18n } = useTranslation();
+
+    const changeLanguage = (lng: string) => {
+        i18n.changeLanguage(lng);
+    };
 
     if (!isOpen || !user) {
         if (isEditProfileOpen && user) {
@@ -36,7 +42,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, t
             >
                 {/* Header */}
                 <div className="flex items-center justify-between p-6 border-b border-zinc-200 dark:border-white/5">
-                    <h2 className="text-2xl font-bold text-zinc-900 dark:text-white">Settings</h2>
+                    <h2 className="text-2xl font-bold text-zinc-900 dark:text-white">{t('settings.title')}</h2>
                     <button
                         onClick={onClose}
                         className="p-2 hover:bg-zinc-100 dark:hover:bg-white/5 rounded-full transition-colors"
@@ -59,7 +65,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, t
                             <div className="flex-1">
                                 <h3 className="text-xl font-bold text-zinc-900 dark:text-white">@{user.username}</h3>
                                 <p className="text-xs text-zinc-400 dark:text-zinc-500 mt-1">
-                                    Member since {new Date(user.createdAt).toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
+                                    Member since {new Date(user.createdAt).toLocaleDateString(i18n.language, { month: 'long', year: 'numeric' })}
                                 </p>
                             </div>
                             <div className="flex gap-2">
@@ -101,11 +107,11 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, t
                         </div>
                     </div>
 
-                    {/* Theme Section */}
+                    {/* Appearance Section */}
                     <div className="space-y-4">
                         <div className="flex items-center gap-2 text-zinc-900 dark:text-white">
                             <Palette size={20} />
-                            <h3 className="font-semibold">Appearance</h3>
+                            <h3 className="font-semibold">{t('settings.theme')}</h3>
                         </div>
                         <div className="pl-7 space-y-3">
                             <div className="flex gap-3">
@@ -116,7 +122,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, t
                                             : 'border-zinc-300 dark:border-zinc-700 hover:border-zinc-400 dark:hover:border-zinc-600'
                                         }`}
                                 >
-                                    Light
+                                    {t('sidebar.lightMode')}
                                 </button>
                                 <button
                                     onClick={theme === 'light' ? onToggleTheme : undefined}
@@ -125,7 +131,37 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, t
                                             : 'border-zinc-300 dark:border-zinc-700 hover:border-zinc-400 dark:hover:border-zinc-600'
                                         }`}
                                 >
-                                    Dark
+                                    {t('sidebar.darkMode')}
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Language Section */}
+                    <div className="space-y-4">
+                        <div className="flex items-center gap-2 text-zinc-900 dark:text-white">
+                            <Globe size={20} />
+                            <h3 className="font-semibold">{t('settings.language')}</h3>
+                        </div>
+                        <div className="pl-7 space-y-3">
+                            <div className="flex gap-3">
+                                <button
+                                    onClick={() => changeLanguage('en')}
+                                    className={`flex-1 py-3 px-4 rounded-lg border-2 font-medium transition-colors ${i18n.language === 'en'
+                                            ? 'border-indigo-500 bg-indigo-50 text-indigo-700 dark:bg-indigo-950 dark:text-indigo-300'
+                                            : 'border-zinc-300 dark:border-zinc-700 hover:border-zinc-400 dark:hover:border-zinc-600'
+                                        }`}
+                                >
+                                    English
+                                </button>
+                                <button
+                                    onClick={() => changeLanguage('zh')}
+                                    className={`flex-1 py-3 px-4 rounded-lg border-2 font-medium transition-colors ${i18n.language === 'zh'
+                                            ? 'border-indigo-500 bg-indigo-50 text-indigo-700 dark:bg-indigo-950 dark:text-indigo-300'
+                                            : 'border-zinc-300 dark:border-zinc-700 hover:border-zinc-400 dark:hover:border-zinc-600'
+                                        }`}
+                                >
+                                    中文
                                 </button>
                             </div>
                         </div>
@@ -181,7 +217,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, t
                         onClick={onClose}
                         className="px-6 py-2 bg-zinc-900 dark:bg-white text-white dark:text-black font-semibold rounded-lg hover:bg-zinc-800 dark:hover:bg-zinc-200 transition-colors"
                     >
-                        Done
+                        {t('common.confirm')}
                     </button>
                 </div>
             </div>

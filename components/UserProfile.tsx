@@ -3,6 +3,7 @@ import { Song, Playlist } from '../types';
 import { usersApi, getAudioUrl, UserProfile as UserProfileType, songsApi } from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import { ArrowLeft, Play, Pause, Heart, Eye, Users, Music as MusicIcon, ChevronRight, Share2, MoreHorizontal, Edit3, X, Camera, Image as ImageIcon, Upload, Loader2 } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 
 interface UserProfileProps {
     username: string;
@@ -18,6 +19,7 @@ interface UserProfileProps {
 
 export const UserProfile: React.FC<UserProfileProps> = ({ username, onBack, onPlaySong, onNavigateToProfile, onNavigateToPlaylist, currentSong, isPlaying, likedSongIds = new Set(), onToggleLike }) => {
     const { user: currentUser, token } = useAuth();
+    const { t } = useTranslation();
     const [profileUser, setProfileUser] = useState<UserProfileType | null>(null);
     const [publicSongs, setPublicSongs] = useState<Song[]>([]);
     const [publicPlaylists, setPublicPlaylists] = useState<Playlist[]>([]);
@@ -158,7 +160,7 @@ export const UserProfile: React.FC<UserProfileProps> = ({ username, onBack, onPl
             <div className="flex items-center justify-center h-full bg-zinc-50 dark:bg-black">
                 <div className="text-zinc-500 dark:text-zinc-400 gap-2 flex items-center">
                     <div className="w-4 h-4 border-2 border-zinc-400 border-t-transparent rounded-full animate-spin"></div>
-                    Loading profile...
+                    {t('user.loading')}
                 </div>
             </div>
         );
@@ -167,9 +169,9 @@ export const UserProfile: React.FC<UserProfileProps> = ({ username, onBack, onPl
     if (!profileUser) {
         return (
             <div className="flex flex-col items-center justify-center h-full gap-4 bg-zinc-50 dark:bg-black">
-                <div className="text-zinc-500 dark:text-zinc-400">User not found</div>
+                <div className="text-zinc-500 dark:text-zinc-400">{t('user.notFound')}</div>
                 <button onClick={onBack} className="px-4 py-2 bg-zinc-200 dark:bg-zinc-800 hover:bg-zinc-300 dark:hover:bg-zinc-700 rounded-lg text-zinc-900 dark:text-white">
-                    Go Back
+                    {t('user.goBack')}
                 </button>
             </div>
         );
@@ -250,7 +252,7 @@ export const UserProfile: React.FC<UserProfileProps> = ({ username, onBack, onPl
                     className="absolute top-4 left-4 flex items-center gap-2 text-white/80 hover:text-white bg-black/30 hover:bg-black/50 px-4 py-2 rounded-full backdrop-blur-sm transition-all z-20"
                 >
                     <ArrowLeft size={20} />
-                    <span>Back</span>
+                    <span>{t('common.back')}</span>
                 </button>
 
                 {/* Edit Banner Button (Owner Only) - Visual Cue */}
@@ -379,7 +381,7 @@ export const UserProfile: React.FC<UserProfileProps> = ({ username, onBack, onPl
                                         className="px-4 md:px-6 py-2 bg-zinc-900 dark:bg-white text-white dark:text-black hover:bg-zinc-800 dark:hover:bg-zinc-200 rounded-full font-bold transition-colors text-sm flex items-center gap-2"
                                     >
                                         <Edit3 size={16} />
-                                        Edit Profile
+                                        {t('user.editProfile')}
                                     </button>
                                 )}
                             </div>
@@ -389,17 +391,17 @@ export const UserProfile: React.FC<UserProfileProps> = ({ username, onBack, onPl
                                 <div className="flex items-center gap-1.5 md:gap-2">
                                     <MusicIcon size={16} className="text-zinc-500 dark:text-zinc-400" />
                                     <span className="font-semibold text-zinc-900 dark:text-white">{publicSongs.length}</span>
-                                    <span className="text-zinc-500 dark:text-zinc-400">Songs</span>
+                                    <span className="text-zinc-500 dark:text-zinc-400">{t('user.songs')}</span>
                                 </div>
                                 <div className="flex items-center gap-1.5 md:gap-2">
                                     <Heart size={16} className="text-zinc-500 dark:text-zinc-400" />
                                     <span className="font-semibold text-zinc-900 dark:text-white">{totalLikes}</span>
-                                    <span className="text-zinc-500 dark:text-zinc-400">Likes</span>
+                                    <span className="text-zinc-500 dark:text-zinc-400">{t('user.likes')}</span>
                                 </div>
                                 <div className="flex items-center gap-1.5 md:gap-2">
                                     <Eye size={16} className="text-zinc-500 dark:text-zinc-400" />
                                     <span className="font-semibold text-zinc-900 dark:text-white">{totalPlays}</span>
-                                    <span className="text-zinc-500 dark:text-zinc-400">Plays</span>
+                                    <span className="text-zinc-500 dark:text-zinc-400">{t('user.plays')}</span>
                                 </div>
                             </div>
                         </div>
@@ -412,7 +414,7 @@ export const UserProfile: React.FC<UserProfileProps> = ({ username, onBack, onPl
                 {/* Featured Songs */}
                 {featuredSongs.length > 0 && (
                     <section>
-                        <h2 className="text-xl md:text-2xl font-bold text-zinc-900 dark:text-white mb-4 md:mb-6">Featured Songs</h2>
+                        <h2 className="text-xl md:text-2xl font-bold text-zinc-900 dark:text-white mb-4 md:mb-6">{t('user.featured')}</h2>
                         <div className="flex gap-3 md:gap-4 overflow-x-auto pb-4 scrollbar-thin scrollbar-thumb-zinc-300 dark:scrollbar-thumb-zinc-700 scrollbar-track-transparent -mx-4 px-4 md:mx-0 md:px-0">
                             {featuredSongs.map((song) => {
                                 const isCurrentSong = currentSong?.id === song.id;
@@ -478,7 +480,7 @@ export const UserProfile: React.FC<UserProfileProps> = ({ username, onBack, onPl
                 {/* Songs Section */}
                 <section>
                     <div className="flex items-center justify-between mb-4 md:mb-6">
-                        <h2 className="text-xl md:text-2xl font-bold text-zinc-900 dark:text-white">Songs</h2>
+                        <h2 className="text-xl md:text-2xl font-bold text-zinc-900 dark:text-white">{t('user.songs')}</h2>
                         <div className="flex items-center gap-4">
                             <div className="flex bg-zinc-200 dark:bg-zinc-900 rounded-full p-1">
                                 <button
@@ -486,14 +488,14 @@ export const UserProfile: React.FC<UserProfileProps> = ({ username, onBack, onPl
                                     className={`px-3 md:px-4 py-1.5 md:py-2 rounded-full text-xs md:text-sm font-medium transition-colors ${songsTab === 'recent' ? 'bg-white dark:bg-white text-zinc-900 dark:text-black shadow-sm' : 'text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-white'
                                         }`}
                                 >
-                                    Recent
+                                    {t('user.recent')}
                                 </button>
                                 <button
                                     onClick={() => setSongsTab('top')}
                                     className={`px-3 md:px-4 py-1.5 md:py-2 rounded-full text-xs md:text-sm font-medium transition-colors ${songsTab === 'top' ? 'bg-white dark:bg-white text-zinc-900 dark:text-black shadow-sm' : 'text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-white'
                                         }`}
                                 >
-                                    Top
+                                    {t('user.top')}
                                 </button>
                             </div>
                         </div>
@@ -502,7 +504,7 @@ export const UserProfile: React.FC<UserProfileProps> = ({ username, onBack, onPl
                     {displaySongs.length === 0 ? (
                         <div className="flex flex-col items-center justify-center py-16 text-zinc-500">
                             <MusicIcon size={64} className="mb-4 opacity-50" />
-                            <p>No public songs yet</p>
+                            <p>{t('user.noSongs')}</p>
                         </div>
                     ) : (
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2 md:gap-4">
@@ -563,9 +565,9 @@ export const UserProfile: React.FC<UserProfileProps> = ({ username, onBack, onPl
                 {publicPlaylists.length > 0 && (
                     <section>
                         <div className="flex items-center justify-between mb-4 md:mb-6">
-                            <h2 className="text-xl md:text-2xl font-bold text-zinc-900 dark:text-white">Playlists</h2>
+                            <h2 className="text-xl md:text-2xl font-bold text-zinc-900 dark:text-white">{t('user.playlists')}</h2>
                             <button className="flex items-center gap-2 text-zinc-500 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-white transition-colors text-sm">
-                                See More <ChevronRight size={18} />
+                                {t('user.seeMore')} <ChevronRight size={18} />
                             </button>
                         </div>
                         <div className="flex gap-3 md:gap-4 overflow-x-auto pb-4 scrollbar-thin scrollbar-thumb-zinc-300 dark:scrollbar-thumb-zinc-700 scrollbar-track-transparent -mx-4 px-4 md:mx-0 md:px-0">
@@ -597,7 +599,7 @@ export const UserProfile: React.FC<UserProfileProps> = ({ username, onBack, onPl
                 <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 dark:bg-black/80 backdrop-blur-sm p-4">
                     <div className="w-full max-w-lg bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-200 max-h-[90vh] overflow-y-auto">
                         <div className="px-4 md:px-6 py-4 border-b border-zinc-200 dark:border-zinc-800 flex items-center justify-between sticky top-0 bg-white dark:bg-zinc-900 z-10">
-                            <h2 className="text-lg md:text-xl font-bold text-zinc-900 dark:text-white">Edit Profile</h2>
+                            <h2 className="text-lg md:text-xl font-bold text-zinc-900 dark:text-white">{t('user.editProfile')}</h2>
                             <button onClick={() => setIsEditModalOpen(false)} className="text-zinc-500 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-white transition-colors">
                                 <X size={20} />
                             </button>
@@ -606,7 +608,7 @@ export const UserProfile: React.FC<UserProfileProps> = ({ username, onBack, onPl
                         <div className="p-4 md:p-6 space-y-6">
                             {/* Avatar Upload */}
                             <div className="space-y-2">
-                                <label className="text-sm font-medium text-zinc-700 dark:text-zinc-300">Avatar Image</label>
+                                <label className="text-sm font-medium text-zinc-700 dark:text-zinc-300">{t('user.avatar')}</label>
                                 <div className="flex gap-4 items-center">
                                     <div className="w-20 h-20 rounded-full bg-zinc-100 dark:bg-zinc-800 border-2 border-zinc-300 dark:border-zinc-700 border-dashed overflow-hidden flex-shrink-0 relative">
                                         {(avatarPreview || editAvatarUrl) ? (
@@ -640,7 +642,7 @@ export const UserProfile: React.FC<UserProfileProps> = ({ username, onBack, onPl
                                             className="flex items-center gap-2 px-4 py-2 bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 text-zinc-900 dark:text-white rounded-lg text-sm font-medium transition-colors"
                                         >
                                             <Upload size={16} />
-                                            Upload Avatar
+                                            {t('user.uploadAvatar')}
                                         </button>
                                         <p className="text-xs text-zinc-500">JPG, PNG, WebP, GIF • Max 5MB</p>
                                     </div>
@@ -649,7 +651,7 @@ export const UserProfile: React.FC<UserProfileProps> = ({ username, onBack, onPl
 
                             {/* Banner Upload */}
                             <div className="space-y-2">
-                                <label className="text-sm font-medium text-zinc-700 dark:text-zinc-300">Banner Image</label>
+                                <label className="text-sm font-medium text-zinc-700 dark:text-zinc-300">{t('user.banner')}</label>
                                 <div
                                     onClick={() => bannerInputRef.current?.click()}
                                     className="relative w-full h-32 rounded-lg bg-zinc-100 dark:bg-zinc-800 border-2 border-zinc-300 dark:border-zinc-700 border-dashed overflow-hidden cursor-pointer hover:border-zinc-400 dark:hover:border-zinc-600 transition-colors"
@@ -663,7 +665,7 @@ export const UserProfile: React.FC<UserProfileProps> = ({ username, onBack, onPl
                                     ) : (
                                         <div className="w-full h-full flex flex-col items-center justify-center text-zinc-400 dark:text-zinc-500 gap-2">
                                             <ImageIcon size={32} />
-                                            <span className="text-sm">Click to upload banner</span>
+                                            <span className="text-sm">{t('user.uploadBanner')}</span>
                                         </div>
                                     )}
                                     {uploadingBanner && (
@@ -684,11 +686,11 @@ export const UserProfile: React.FC<UserProfileProps> = ({ username, onBack, onPl
 
                             {/* Bio Input */}
                             <div className="space-y-2">
-                                <label className="text-sm font-medium text-zinc-700 dark:text-zinc-300">Bio</label>
+                                <label className="text-sm font-medium text-zinc-700 dark:text-zinc-300">{t('user.bio')}</label>
                                 <textarea
                                     value={editBio}
                                     onChange={(e) => setEditBio(e.target.value)}
-                                    placeholder="Tell us about yourself..."
+                                    placeholder={t('user.bioPlaceholder')}
                                     rows={4}
                                     className="w-full bg-zinc-50 dark:bg-black border border-zinc-300 dark:border-zinc-800 rounded-lg px-3 py-2 text-zinc-900 dark:text-white placeholder-zinc-400 dark:placeholder-zinc-600 focus:outline-none focus:border-pink-500 dark:focus:border-indigo-500 transition-colors resize-none"
                                 />
@@ -707,7 +709,7 @@ export const UserProfile: React.FC<UserProfileProps> = ({ username, onBack, onPl
                                 className="px-4 py-2 text-sm font-medium text-zinc-600 dark:text-zinc-300 hover:text-zinc-900 dark:hover:text-white transition-colors"
                                 disabled={isSaving}
                             >
-                                Cancel
+                                {t('common.cancel')}
                             </button>
                             <button
                                 onClick={handleSaveProfile}
@@ -715,7 +717,7 @@ export const UserProfile: React.FC<UserProfileProps> = ({ username, onBack, onPl
                                 className="px-6 py-2 bg-zinc-900 dark:bg-white text-white dark:text-black hover:bg-zinc-800 dark:hover:bg-zinc-200 rounded-full text-sm font-bold transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
                             >
                                 {isSaving && <Loader2 size={16} className="animate-spin" />}
-                                {uploadingAvatar ? 'Uploading Avatar...' : uploadingBanner ? 'Uploading Banner...' : isSaving ? 'Saving...' : 'Save Changes'}
+                                {uploadingAvatar ? t('user.uploadingAvatar') : uploadingBanner ? t('user.uploadingBanner') : isSaving ? t('common.saving') : t('actions.saveChanges')}
                             </button>
                         </div>
                     </div>
