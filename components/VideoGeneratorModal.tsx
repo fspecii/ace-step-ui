@@ -4,6 +4,7 @@ import { X, Play, Pause, Download, Wand2, Image as ImageIcon, Music, Video, Load
 import { FFmpeg } from '@ffmpeg/ffmpeg';
 import { fetchFile, toBlobURL } from '@ffmpeg/util';
 import { useResponsive } from '../context/ResponsiveContext';
+import { useTranslation } from 'react-i18next';
 
 interface VideoGeneratorModalProps {
   isOpen: boolean;
@@ -79,19 +80,6 @@ interface PexelsVideo {
   user: { name: string };
 }
 
-const PRESETS: { id: PresetType; label: string; icon: React.ReactNode }[] = [
-  { id: 'NCS Circle', label: 'Classic NCS', icon: <Circle size={16} /> },
-  { id: 'Linear Bars', label: 'Spectrum', icon: <BarChart2 size={16} /> },
-  { id: 'Dual Mirror', label: 'Mirror', icon: <ColumnsIcon /> },
-  { id: 'Center Wave', label: 'Shockwave', icon: <Waves size={16} /> },
-  { id: 'Orbital', label: 'Orbital', icon: <Disc size={16} /> },
-  { id: 'Hexagon', label: 'Hex Core', icon: <Box size={16} /> },
-  { id: 'Oscilloscope', label: 'Analog', icon: <Activity size={16} /> },
-  { id: 'Digital Rain', label: 'Matrix', icon: <Grid size={16} /> },
-  { id: 'Shockwave', label: 'Pulse', icon: <Aperture size={16} /> },
-  { id: 'Minimal', label: 'Clean', icon: <Type size={16} /> },
-];
-
 function ColumnsIcon() {
   return (
     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -103,6 +91,7 @@ function ColumnsIcon() {
 
 export const VideoGeneratorModal: React.FC<VideoGeneratorModalProps> = ({ isOpen, onClose, song }) => {
   const { isMobile } = useResponsive();
+  const { t } = useTranslation();
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const animationRef = useRef<number>(0);
@@ -111,6 +100,19 @@ export const VideoGeneratorModal: React.FC<VideoGeneratorModalProps> = ({ isOpen
   const bgImageRef = useRef<HTMLImageElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const videoFileInputRef = useRef<HTMLInputElement>(null);
+
+  const PRESETS: { id: PresetType; label: string; icon: React.ReactNode }[] = [
+    { id: 'NCS Circle', label: 'Classic NCS', icon: <Circle size={16} /> },
+    { id: 'Linear Bars', label: 'Spectrum', icon: <BarChart2 size={16} /> },
+    { id: 'Dual Mirror', label: 'Mirror', icon: <ColumnsIcon /> },
+    { id: 'Center Wave', label: 'Shockwave', icon: <Waves size={16} /> },
+    { id: 'Orbital', label: 'Orbital', icon: <Disc size={16} /> },
+    { id: 'Hexagon', label: 'Hex Core', icon: <Box size={16} /> },
+    { id: 'Oscilloscope', label: 'Analog', icon: <Activity size={16} /> },
+    { id: 'Digital Rain', label: 'Matrix', icon: <Grid size={16} /> },
+    { id: 'Shockwave', label: 'Pulse', icon: <Aperture size={16} /> },
+    { id: 'Minimal', label: 'Clean', icon: <Type size={16} /> },
+  ];
 
   // FFmpeg Refs
   const ffmpegRef = useRef<FFmpeg | null>(null);
@@ -1701,7 +1703,7 @@ export const VideoGeneratorModal: React.FC<VideoGeneratorModalProps> = ({ isOpen
             <div className="absolute top-0 left-0 right-0 z-10 p-3 bg-gradient-to-b from-black/80 to-transparent">
               <h2 className="text-base font-bold text-white flex items-center gap-2">
                 <Video className="text-pink-500" size={18} />
-                Video Studio
+                {t('video.title')}
               </h2>
             </div>
 
@@ -1735,19 +1737,19 @@ export const VideoGeneratorModal: React.FC<VideoGeneratorModalProps> = ({ isOpen
               <div className="p-6 border-b border-white/5">
                   <h2 className="text-xl font-bold text-white mb-1 flex items-center gap-2">
                       <Video className="text-pink-500" size={20} />
-                      Video Studio
+                      {t('video.title')}
                   </h2>
-                  <p className="text-zinc-500 text-xs">Create professional visualizers.</p>
+                  <p className="text-zinc-500 text-xs">{t('video.subtitle')}</p>
               </div>
             )}
 
             {/* Tabs */}
             <div className="flex border-b border-white/5">
                 {[
-                    { id: 'presets', label: 'Presets', icon: <Grid size={14} /> },
-                    { id: 'style', label: 'Style', icon: <Palette size={14} /> },
-                    { id: 'text', label: 'Text', icon: <Type size={14} /> },
-                    { id: 'effects', label: 'FX', icon: <Zap size={14} /> }
+                    { id: 'presets', label: t('video.presets'), icon: <Grid size={14} /> },
+                    { id: 'style', label: t('video.style'), icon: <Palette size={14} /> },
+                    { id: 'text', label: t('video.text'), icon: <Type size={14} /> },
+                    { id: 'effects', label: t('video.fx'), icon: <Zap size={14} /> }
                 ].map(tab => (
                     <button 
                         key={tab.id}
@@ -1786,7 +1788,7 @@ export const VideoGeneratorModal: React.FC<VideoGeneratorModalProps> = ({ isOpen
                          {/* Background */}
                          <div className="space-y-3">
                             <label className="text-xs font-bold text-zinc-500 uppercase flex justify-between">
-                                Background
+                                {t('video.background')}
                             </label>
                             <div className="bg-black/20 p-3 rounded-lg border border-white/5 space-y-3">
                                 {/* Type Selection */}
@@ -1795,19 +1797,19 @@ export const VideoGeneratorModal: React.FC<VideoGeneratorModalProps> = ({ isOpen
                                         onClick={() => { setBackgroundType('random'); setBackgroundSeed(Date.now()); }}
                                         className={`py-2 rounded text-xs font-bold flex items-center justify-center gap-1 ${backgroundType === 'random' ? 'bg-pink-600 text-white' : 'bg-zinc-800 text-zinc-400'}`}
                                      >
-                                         <Wand2 size={12}/> Random
+                                         <Wand2 size={12}/> {t('video.random')}
                                      </button>
                                      <button
                                         onClick={() => setBackgroundType('custom')}
                                         className={`py-2 rounded text-xs font-bold flex items-center justify-center gap-1 ${backgroundType === 'custom' ? 'bg-pink-600 text-white' : 'bg-zinc-800 text-zinc-400'}`}
                                      >
-                                         <ImageIcon size={12}/> Image
+                                         <ImageIcon size={12}/> {t('video.image')}
                                      </button>
                                      <button
                                         onClick={() => setBackgroundType('video')}
                                         className={`py-2 rounded text-xs font-bold flex items-center justify-center gap-1 ${backgroundType === 'video' ? 'bg-pink-600 text-white' : 'bg-zinc-800 text-zinc-400'}`}
                                      >
-                                         <Video size={12}/> Video
+                                         <Video size={12}/> {t('video.video')}
                                      </button>
                                 </div>
 
@@ -1819,13 +1821,13 @@ export const VideoGeneratorModal: React.FC<VideoGeneratorModalProps> = ({ isOpen
                                                 onClick={() => fileInputRef.current?.click()}
                                                 className="py-2 px-3 bg-zinc-700 hover:bg-zinc-600 rounded text-xs text-white flex items-center justify-center gap-1"
                                             >
-                                                <Upload size={12}/> Upload
+                                                <Upload size={12}/> {t('video.upload')}
                                             </button>
                                             <button
                                                 onClick={() => openPexelsBrowser('background', 'photos')}
                                                 className="py-2 px-3 bg-emerald-600 hover:bg-emerald-700 rounded text-xs text-white flex items-center justify-center gap-1"
                                             >
-                                                <Search size={12}/> Pexels
+                                                <Search size={12}/> {t('video.pexels')}
                                             </button>
                                         </div>
                                         {customImage && (
@@ -1844,13 +1846,13 @@ export const VideoGeneratorModal: React.FC<VideoGeneratorModalProps> = ({ isOpen
                                                 onClick={() => videoFileInputRef.current?.click()}
                                                 className="py-2 px-3 bg-zinc-700 hover:bg-zinc-600 rounded text-xs text-white flex items-center justify-center gap-1"
                                             >
-                                                <Upload size={12}/> Upload
+                                                <Upload size={12}/> {t('video.upload')}
                                             </button>
                                             <button
                                                 onClick={() => openPexelsBrowser('background', 'videos')}
                                                 className="py-2 px-3 bg-emerald-600 hover:bg-emerald-700 rounded text-xs text-white flex items-center justify-center gap-1"
                                             >
-                                                <Search size={12}/> Pexels
+                                                <Search size={12}/> {t('video.pexels')}
                                             </button>
                                         </div>
                                         <input
@@ -1884,7 +1886,7 @@ export const VideoGeneratorModal: React.FC<VideoGeneratorModalProps> = ({ isOpen
 
                                 <div>
                                     <div className="flex justify-between text-sm text-zinc-300 mb-2">
-                                        <span>Dimming</span>
+                                        <span>{t('video.dimming')}</span>
                                         <span>{Math.round(config.bgDim * 100)}%</span>
                                     </div>
                                     <input
@@ -1899,7 +1901,7 @@ export const VideoGeneratorModal: React.FC<VideoGeneratorModalProps> = ({ isOpen
 
                          {/* Colors */}
                          <div className="space-y-3">
-                             <label className="text-xs font-bold text-zinc-500 uppercase">Color Presets</label>
+                             <label className="text-xs font-bold text-zinc-500 uppercase">{t('video.colors')}</label>
                              <div className="grid grid-cols-5 gap-2">
                                  {[
                                      { name: 'Neon Pink', primary: '#ec4899', secondary: '#8b5cf6' },
@@ -1933,7 +1935,7 @@ export const VideoGeneratorModal: React.FC<VideoGeneratorModalProps> = ({ isOpen
                          </div>
 
                          <div className="space-y-3">
-                             <label className="text-xs font-bold text-zinc-500 uppercase">Custom Colors</label>
+                             <label className="text-xs font-bold text-zinc-500 uppercase">{t('video.customColors')}</label>
                              <div className="grid grid-cols-2 gap-4">
                                  <div>
                                      <span className="text-[10px] text-zinc-400 mb-1 block">Primary</span>
@@ -1955,7 +1957,7 @@ export const VideoGeneratorModal: React.FC<VideoGeneratorModalProps> = ({ isOpen
                          {/* Particles */}
                          <div className="space-y-3">
                             <div className="flex justify-between text-xs font-bold text-zinc-500 uppercase">
-                                <span>Particles</span>
+                                <span>{t('video.particles')}</span>
                                 <span>{config.particleCount}</span>
                             </div>
                             <input
@@ -1968,7 +1970,7 @@ export const VideoGeneratorModal: React.FC<VideoGeneratorModalProps> = ({ isOpen
 
                         {/* Center Image (Album Art) */}
                         <div className="space-y-3">
-                            <label className="text-xs font-bold text-zinc-500 uppercase">Center Image</label>
+                            <label className="text-xs font-bold text-zinc-500 uppercase">{t('video.centerImage')}</label>
                             <div className="bg-black/20 p-3 rounded-lg border border-white/5 space-y-3">
                                 <div className="flex items-center gap-3">
                                     {/* Preview */}
@@ -1985,13 +1987,13 @@ export const VideoGeneratorModal: React.FC<VideoGeneratorModalProps> = ({ isOpen
                                                 onClick={() => albumArtInputRef.current?.click()}
                                                 className="py-1.5 px-2 bg-zinc-700 hover:bg-zinc-600 rounded text-[10px] text-white flex items-center justify-center gap-1"
                                             >
-                                                <Upload size={10}/> Upload
+                                                <Upload size={10}/> {t('video.upload')}
                                             </button>
                                             <button
                                                 onClick={() => openPexelsBrowser('albumArt')}
                                                 className="py-1.5 px-2 bg-emerald-600 hover:bg-emerald-700 rounded text-[10px] text-white flex items-center justify-center gap-1"
                                             >
-                                                <Search size={10}/> Pexels
+                                                <Search size={10}/> {t('video.pexels')}
                                             </button>
                                         </div>
                                         {customAlbumArt && (
@@ -1999,7 +2001,7 @@ export const VideoGeneratorModal: React.FC<VideoGeneratorModalProps> = ({ isOpen
                                                 onClick={() => setCustomAlbumArt(null)}
                                                 className="w-full py-1 text-[10px] text-zinc-500 hover:text-red-400"
                                             >
-                                                Reset to default
+                                                <Trash2 size={10} className="inline mr-1"/> Remove
                                             </button>
                                         )}
                                     </div>
@@ -2019,383 +2021,291 @@ export const VideoGeneratorModal: React.FC<VideoGeneratorModalProps> = ({ isOpen
                 {/* TEXT TAB */}
                 {activeTab === 'text' && (
                     <div className="space-y-4">
-                        <button 
-                            onClick={addTextLayer}
-                            className="w-full py-2 bg-pink-600 text-white rounded-lg flex items-center justify-center gap-2 text-xs font-bold hover:bg-pink-700"
-                        >
-                            <Plus size={14} /> Add Text Layer
-                        </button>
-                        
-                        <div className="space-y-3">
-                            {textLayers.map((layer, index) => (
-                                <div key={layer.id} className="bg-black/20 p-3 rounded-lg border border-white/5 space-y-3">
-                                    <div className="flex items-center justify-between">
-                                        <span className="text-xs font-bold text-zinc-500">Layer {index + 1}</span>
-                                        <button onClick={() => removeTextLayer(layer.id)} className="text-zinc-500 hover:text-red-500">
-                                            <Trash2 size={14} />
-                                        </button>
+                        <div className="flex justify-between items-center">
+                            <h3 className="text-xs font-bold text-zinc-500 uppercase">Text Layers</h3>
+                            <button
+                                onClick={addTextLayer}
+                                className="text-xs bg-pink-600 hover:bg-pink-700 text-white px-2 py-1 rounded flex items-center gap-1"
+                            >
+                                <Plus size={12}/> Add
+                            </button>
+                        </div>
+
+                        {textLayers.map((layer, index) => (
+                            <div key={layer.id} className="bg-black/20 p-3 rounded-lg border border-white/5 space-y-3">
+                                <div className="flex justify-between items-center">
+                                    <span className="text-xs font-bold text-zinc-400">Layer {index + 1}</span>
+                                    <button
+                                        onClick={() => removeTextLayer(layer.id)}
+                                        className="text-zinc-500 hover:text-red-400"
+                                    >
+                                        <Trash2 size={14}/>
+                                    </button>
+                                </div>
+                                <input
+                                    type="text"
+                                    value={layer.text}
+                                    onChange={(e) => updateTextLayer(layer.id, { text: e.target.value })}
+                                    className="w-full bg-zinc-800 rounded px-2 py-1.5 text-xs text-white border border-white/10"
+                                    placeholder="Enter text..."
+                                />
+                                <div className="grid grid-cols-2 gap-2">
+                                    <div>
+                                        <span className="text-[10px] text-zinc-500 block mb-1">Size</span>
+                                        <input
+                                            type="number"
+                                            value={layer.size}
+                                            onChange={(e) => updateTextLayer(layer.id, { size: parseInt(e.target.value) })}
+                                            className="w-full bg-zinc-800 rounded px-2 py-1 text-xs text-white border border-white/10"
+                                        />
                                     </div>
-                                    <input 
-                                        type="text" 
-                                        value={layer.text} 
-                                        onChange={(e) => updateTextLayer(layer.id, { text: e.target.value })}
-                                        className="w-full bg-zinc-800 rounded px-2 py-1 text-xs text-white border border-white/5"
-                                        placeholder="Text content"
-                                    />
-                                    <div className="grid grid-cols-2 gap-2">
-                                        <div>
-                                            <label className="text-[10px] text-zinc-500 block mb-1">X Position</label>
-                                            <input type="range" min="0" max="100" value={layer.x} onChange={(e) => updateTextLayer(layer.id, { x: parseInt(e.target.value) })} className="w-full accent-pink-500 h-1 bg-zinc-700 rounded-lg appearance-none" />
-                                        </div>
-                                        <div>
-                                            <label className="text-[10px] text-zinc-500 block mb-1">Y Position</label>
-                                            <input type="range" min="0" max="100" value={layer.y} onChange={(e) => updateTextLayer(layer.id, { y: parseInt(e.target.value) })} className="w-full accent-pink-500 h-1 bg-zinc-700 rounded-lg appearance-none" />
-                                        </div>
-                                    </div>
-                                    <div className="flex gap-2">
-                                        <div className="flex-1">
-                                            <label className="text-[10px] text-zinc-500 block mb-1">Size</label>
-                                            <input type="number" value={layer.size} onChange={(e) => updateTextLayer(layer.id, { size: parseInt(e.target.value) })} className="w-full bg-zinc-800 rounded px-2 py-1 text-xs text-white border border-white/5" />
-                                        </div>
-                                        <div>
-                                            <label className="text-[10px] text-zinc-500 block mb-1">Color</label>
-                                            <input type="color" value={layer.color} onChange={(e) => updateTextLayer(layer.id, { color: e.target.value })} className="w-8 h-6 rounded cursor-pointer border-none bg-transparent" />
+                                    <div>
+                                        <span className="text-[10px] text-zinc-500 block mb-1">Color</span>
+                                        <div className="flex items-center gap-2 bg-zinc-800 rounded px-2 py-1 border border-white/10 h-[26px]">
+                                            <input
+                                                type="color"
+                                                value={layer.color}
+                                                onChange={(e) => updateTextLayer(layer.id, { color: e.target.value })}
+                                                className="w-4 h-4 rounded border-none bg-transparent cursor-pointer"
+                                            />
+                                            <span className="text-[10px] text-zinc-400 font-mono">{layer.color}</span>
                                         </div>
                                     </div>
                                 </div>
-                            ))}
-                        </div>
+                                <div>
+                                    <span className="text-[10px] text-zinc-500 block mb-1">Position (X, Y %)</span>
+                                    <div className="grid grid-cols-2 gap-2">
+                                        <input
+                                            type="range" min="0" max="100"
+                                            value={layer.x}
+                                            onChange={(e) => updateTextLayer(layer.id, { x: parseInt(e.target.value) })}
+                                            className="w-full accent-pink-500 h-1 bg-zinc-700 rounded-lg appearance-none cursor-pointer"
+                                        />
+                                        <input
+                                            type="range" min="0" max="100"
+                                            value={layer.y}
+                                            onChange={(e) => updateTextLayer(layer.id, { y: parseInt(e.target.value) })}
+                                            className="w-full accent-pink-500 h-1 bg-zinc-700 rounded-lg appearance-none cursor-pointer"
+                                        />
+                                    </div>
+                                </div>
+                            </div>
+                        ))}
                     </div>
                 )}
 
                 {/* EFFECTS TAB */}
                 {activeTab === 'effects' && (
-                    <div className="space-y-2">
-                        {[
-                            { id: 'shake', label: 'Bass Shake', desc: 'Camera reacts to low freq', icon: <Activity size={16}/> },
-                            { id: 'glitch', label: 'Digital Glitch', desc: 'Random artifacting', icon: <Zap size={16}/> },
-                            { id: 'vhs', label: 'VHS Tape', desc: 'Color bleeding & noise', icon: <Disc size={16}/> },
-                            { id: 'cctv', label: 'CCTV Mode', desc: 'Night vision style', icon: <Monitor size={16}/> },
-                            { id: 'scanlines', label: 'Scanlines', desc: 'Old monitor effect', icon: <Grid size={16}/> },
-                            { id: 'chromatic', label: 'Aberration', desc: 'RGB Split', icon: <Layers size={16}/> },
-                            { id: 'bloom', label: 'Bloom', desc: 'Glow on bright areas', icon: <Sun size={16}/> },
-                            { id: 'filmGrain', label: 'Film Grain', desc: 'Cinematic noise', icon: <Film size={16}/> },
-                            { id: 'pixelate', label: 'Pixelate', desc: 'Retro pixel look', icon: <Grid size={16}/> },
-                            { id: 'strobe', label: 'Strobe', desc: 'Flash on bass hits', icon: <Zap size={16}/> },
-                            { id: 'vignette', label: 'Vignette', desc: 'Dark edges', icon: <Circle size={16}/> },
-                            { id: 'hueShift', label: 'Hue Shift', desc: 'Color rotation', icon: <Palette size={16}/> },
-                            { id: 'letterbox', label: 'Letterbox', desc: 'Cinematic bars', icon: <Minus size={16}/> },
-                        ].map((effect) => {
-                             const effectId = effect.id as keyof EffectConfig;
-                             const isActive = effects[effectId];
-                             const intensity = intensities[effectId as keyof EffectIntensities];
-
-                             return (
-                                <div key={effect.id} className={`rounded-lg border transition-all ${isActive ? 'bg-pink-600/10 border-pink-500/30' : 'bg-black/20 border-white/5'}`}>
-                                     <button 
-                                        onClick={() => setEffects(prev => ({ ...prev, [effectId]: !prev[effectId] }))}
-                                        className="w-full flex items-center justify-between p-3"
-                                    >
-                                        <div className="flex items-center gap-3">
-                                            <div className={`p-1.5 rounded-md ${isActive ? 'bg-pink-500 text-white' : 'bg-zinc-800 text-zinc-500'}`}>
-                                                {effect.icon}
-                                            </div>
-                                            <div className="text-left">
-                                                <div className={`text-sm font-bold ${isActive ? 'text-white' : 'text-zinc-400'}`}>{effect.label}</div>
-                                                <div className="text-[10px] text-zinc-500">{effect.desc}</div>
-                                            </div>
-                                        </div>
-                                        <div className={`w-3 h-3 rounded-full ${isActive ? 'bg-pink-500 shadow-[0_0_8px_rgba(236,72,153,0.8)]' : 'bg-zinc-700'}`}></div>
-                                    </button>
-                                    
-                                    {/* Intensity Slider */}
-                                    {isActive && (
-                                        <div className="px-3 pb-3 pt-0 animate-in fade-in slide-in-from-top-2">
-                                            <div className="flex justify-between text-[10px] text-zinc-400 mb-1">
+                    <div className="space-y-4">
+                        <div className="grid grid-cols-2 gap-3">
+                            {Object.entries(effects).map(([key, enabled]) => (
+                                <div key={key} className={`p-3 rounded-lg border transition-all ${enabled ? 'bg-pink-900/20 border-pink-500/50' : 'bg-black/20 border-white/5'}`}>
+                                    <div className="flex items-center justify-between mb-2">
+                                        <span className="text-xs font-bold capitalize text-zinc-300">{key.replace(/([A-Z])/g, ' $1').trim()}</span>
+                                        <button
+                                            onClick={() => setEffects({ ...effects, [key]: !enabled })}
+                                            className={`w-8 h-4 rounded-full relative transition-colors ${enabled ? 'bg-pink-500' : 'bg-zinc-700'}`}
+                                        >
+                                            <div className={`absolute top-0.5 left-0.5 w-3 h-3 bg-white rounded-full transition-transform ${enabled ? 'translate-x-4' : 'translate-x-0'}`} />
+                                        </button>
+                                    </div>
+                                    {enabled && (
+                                        <div className="space-y-1">
+                                            <div className="flex justify-between text-[10px] text-zinc-500">
                                                 <span>Intensity</span>
-                                                <span>{Math.round(intensity * 100)}%</span>
+                                                <span>{Math.round(intensities[key as keyof EffectIntensities] * 100)}%</span>
                                             </div>
-                                            <input 
-                                                type="range" min="0" max="1" step="0.05" 
-                                                value={intensity}
-                                                onChange={(e) => setIntensities({...intensities, [effectId]: parseFloat(e.target.value)})}
+                                            <input
+                                                type="range" min="0" max="1" step="0.05"
+                                                value={intensities[key as keyof EffectIntensities]}
+                                                onChange={(e) => setIntensities({ ...intensities, [key]: parseFloat(e.target.value) })}
                                                 className="w-full accent-pink-500 h-1 bg-zinc-700 rounded-lg appearance-none cursor-pointer"
                                             />
                                         </div>
                                     )}
                                 </div>
-                             );
-                        })}
+                            ))}
+                        </div>
                     </div>
                 )}
-
             </div>
 
-            {/* Footer */}
-            <div className="p-4 md:p-6 border-t border-white/5 bg-black/20 space-y-3 safe-area-inset-bottom">
-                 {ffmpegLoading ? (
-                     <div className="w-full bg-zinc-800 rounded-xl h-12 flex items-center justify-center px-4">
-                         <div className="flex items-center gap-2 text-white font-bold text-sm">
-                             <Loader2 className="animate-spin" size={18} />
-                             Loading video encoder...
-                         </div>
-                     </div>
-                 ) : isExporting ? (
-                     <div className="w-full bg-zinc-800 rounded-xl h-12 flex items-center justify-center px-4 relative overflow-hidden">
-                         <div
-                           className={`absolute left-0 top-0 bottom-0 transition-all duration-100 ${exportStage === 'capturing' ? 'bg-pink-600/20' : 'bg-blue-600/20'}`}
-                           style={{ width: `${exportProgress}%` }}
-                         />
-                         <div className="flex items-center gap-2 z-10 text-white font-bold text-sm">
-                             {exportStage === 'capturing' ? (
-                               <>
-                                 <Loader2 className="animate-spin text-pink-400" size={16} />
-                                 Rendering frames {Math.round(exportProgress)}%
-                               </>
-                             ) : (
-                               <>
-                                 <Loader2 className="animate-spin text-blue-400" size={16} />
-                                 {exportProgress < 95 ? 'Encoding (be patient)...' : `Encoding MP4 ${Math.round(exportProgress)}%`}
-                               </>
-                             )}
-                         </div>
-                     </div>
-                 ) : (
+            {/* Footer Actions */}
+            <div className="p-4 md:p-6 border-t border-white/5 bg-black/20">
+                {!ffmpegLoaded && !ffmpegLoading && (
+                    <div className="mb-3 p-2 bg-yellow-500/10 border border-yellow-500/20 rounded text-xs text-yellow-200 text-center">
+                        Video encoder not loaded.
+                        <button onClick={loadFFmpeg} className="ml-2 underline font-bold hover:text-white">Load Now</button>
+                    </div>
+                )}
+                
+                {isExporting ? (
+                    <div className="space-y-2">
+                        <div className="flex justify-between text-xs font-bold text-zinc-400">
+                            <span>{exportStage === 'capturing' ? 'Rendering Frames...' : 'Encoding Video...'}</span>
+                            <span>{exportProgress}%</span>
+                        </div>
+                        <div className="h-2 bg-zinc-800 rounded-full overflow-hidden">
+                            <div 
+                                className="h-full bg-gradient-to-r from-pink-500 to-purple-500 transition-all duration-300"
+                                style={{ width: `${exportProgress}%` }}
+                            />
+                        </div>
+                        <button 
+                            onClick={() => window.location.reload()} // Hard stop
+                            className="w-full mt-2 py-2 text-xs font-bold text-red-400 hover:text-red-300 hover:bg-red-500/10 rounded transition-colors"
+                        >
+                            Cancel
+                        </button>
+                    </div>
+                ) : (
                     <button
                         onClick={startRecording}
-                        disabled={ffmpegLoading}
-                        className="w-full h-12 bg-white text-black font-bold rounded-xl flex items-center justify-center gap-2 hover:scale-105 transition-transform disabled:opacity-50"
+                        disabled={!ffmpegLoaded}
+                        className="w-full py-3 bg-gradient-to-r from-pink-600 to-purple-600 hover:from-pink-500 hover:to-purple-500 text-white rounded-xl font-bold shadow-lg shadow-pink-900/20 transition-all transform active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                     >
-                        <Download size={18} />
-                        Render Video (MP4)
+                        {ffmpegLoading ? <Loader2 className="animate-spin" size={18} /> : <Download size={18} />}
+                        Export Video
                     </button>
-                 )}
-                 <p className="text-[10px] text-zinc-600 text-center">
-                   {ffmpegLoaded ? 'Encoder ready • ' : ''}Offline rendering - faster than real-time.
-                 </p>
+                )}
             </div>
         </div>
 
-        {/* Preview Area - Desktop only */}
-        {!isMobile && (
-          <div className="flex-1 bg-black relative flex flex-col">
-               <canvas
-                  ref={canvasRef}
-                  width={1920}
-                  height={1080}
-                  className="w-full h-full object-contain bg-[#0a0a0a]"
-               />
+        {/* Pexels Browser Modal Overlay */}
+        {showPexelsBrowser && (
+            <div className="absolute inset-0 z-50 bg-zinc-900 flex flex-col animate-in fade-in duration-200">
+                <div className="p-4 border-b border-white/10 flex items-center gap-3 bg-zinc-900/95 backdrop-blur z-10">
+                    <button onClick={() => setShowPexelsBrowser(false)} className="p-2 hover:bg-white/10 rounded-full text-white">
+                        <X size={20} />
+                    </button>
+                    <div className="flex-1 relative">
+                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400" size={16} />
+                        <input
+                            type="text"
+                            value={pexelsQuery}
+                            onChange={(e) => setPexelsQuery(e.target.value)}
+                            onKeyDown={(e) => e.key === 'Enter' && searchPexels(pexelsQuery, pexelsTab)}
+                            placeholder={`Search Pexels ${pexelsTab}...`}
+                            className="w-full bg-zinc-800 text-white pl-10 pr-4 py-2 rounded-lg text-sm border border-white/5 focus:border-pink-500 focus:outline-none"
+                            autoFocus
+                        />
+                    </div>
+                    {pexelsTarget !== 'albumArt' && (
+                        <div className="flex bg-zinc-800 rounded-lg p-1">
+                            <button
+                                onClick={() => { setPexelsTab('photos'); searchPexels(pexelsQuery, 'photos'); }}
+                                className={`px-3 py-1.5 rounded-md text-xs font-bold transition-colors ${pexelsTab === 'photos' ? 'bg-zinc-600 text-white' : 'text-zinc-400 hover:text-white'}`}
+                            >
+                                Photos
+                            </button>
+                            <button
+                                onClick={() => { setPexelsTab('videos'); searchPexels(pexelsQuery, 'videos'); }}
+                                className={`px-3 py-1.5 rounded-md text-xs font-bold transition-colors ${pexelsTab === 'videos' ? 'bg-zinc-600 text-white' : 'text-zinc-400 hover:text-white'}`}
+                            >
+                                Videos
+                            </button>
+                        </div>
+                    )}
+                </div>
 
-               {/* Playback Controls Overlay */}
-               <div className="absolute bottom-0 left-0 right-0 p-8 bg-gradient-to-t from-black/90 via-black/40 to-transparent flex items-center justify-center gap-6">
-                   <button
-                      onClick={togglePlay}
-                      disabled={isExporting}
-                      className="w-16 h-16 rounded-full bg-white text-black flex items-center justify-center hover:scale-105 transition-transform shadow-xl hover:shadow-2xl disabled:opacity-50 disabled:cursor-not-allowed"
-                   >
-                       {isPlaying ? <Pause fill="black" size={24} /> : <Play fill="black" className="ml-1" size={24} />}
-                   </button>
-               </div>
-          </div>
+                <div className="flex-1 overflow-y-auto p-4 custom-scrollbar">
+                    {showPexelsApiKeyInput ? (
+                        <div className="flex flex-col items-center justify-center h-full max-w-md mx-auto text-center space-y-4">
+                            <KeyIcon size={48} className="text-zinc-600" />
+                            <h3 className="text-xl font-bold text-white">Pexels API Key Required</h3>
+                            <p className="text-zinc-400 text-sm">To search Pexels, you need a free API key. Get one at pexels.com/api</p>
+                            <input
+                                type="password"
+                                placeholder="Paste API Key here"
+                                className="w-full bg-zinc-800 border border-white/10 rounded-lg px-4 py-2 text-white"
+                                onKeyDown={(e) => {
+                                    if (e.key === 'Enter') {
+                                        savePexelsApiKey((e.target as HTMLInputElement).value);
+                                    }
+                                }}
+                            />
+                            <button
+                                onClick={() => savePexelsApiKey((document.querySelector('input[type="password"]') as HTMLInputElement)?.value)}
+                                className="px-6 py-2 bg-pink-600 text-white rounded-lg font-bold hover:bg-pink-500"
+                            >
+                                Save Key
+                            </button>
+                        </div>
+                    ) : pexelsError ? (
+                        <div className="flex flex-col items-center justify-center h-full text-zinc-500 gap-2">
+                            <p>{pexelsError}</p>
+                            <button onClick={() => searchPexels(pexelsQuery, pexelsTab)} className="text-pink-500 hover:underline text-sm">Try Again</button>
+                            <button onClick={() => setShowPexelsApiKeyInput(true)} className="text-xs text-zinc-600 hover:text-zinc-400">Update API Key</button>
+                        </div>
+                    ) : pexelsLoading ? (
+                        <div className="flex items-center justify-center h-full">
+                            <Loader2 className="animate-spin text-pink-500" size={32} />
+                        </div>
+                    ) : (
+                        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+                            {pexelsTab === 'photos' ? (
+                                pexelsPhotos.map(photo => (
+                                    <div
+                                        key={photo.id}
+                                        onClick={() => selectPexelsPhoto(photo)}
+                                        className="aspect-video relative group cursor-pointer rounded-lg overflow-hidden bg-zinc-800"
+                                    >
+                                        <img src={photo.src.large} alt={photo.photographer} className="w-full h-full object-cover transition-transform group-hover:scale-105" />
+                                        <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-end p-2">
+                                            <p className="text-xs text-white truncate">By {photo.photographer}</p>
+                                        </div>
+                                    </div>
+                                ))
+                            ) : (
+                                pexelsVideos.map(video => (
+                                    <div
+                                        key={video.id}
+                                        onClick={() => selectPexelsVideo(video)}
+                                        className="aspect-video relative group cursor-pointer rounded-lg overflow-hidden bg-zinc-800"
+                                    >
+                                        <img src={video.image} alt={video.user.name} className="w-full h-full object-cover transition-transform group-hover:scale-105" />
+                                        <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                                            <Play size={24} className="text-white fill-white" />
+                                        </div>
+                                        <div className="absolute bottom-2 right-2 bg-black/60 px-1.5 rounded text-[10px] text-white font-mono">
+                                            VIDEO
+                                        </div>
+                                    </div>
+                                ))
+                            )}
+                        </div>
+                    )}
+                </div>
+                <div className="p-2 border-t border-white/5 text-center">
+                    <a href="https://www.pexels.com" target="_blank" rel="noopener noreferrer" className="text-[10px] text-zinc-500 hover:text-zinc-300">
+                        Photos provided by Pexels
+                    </a>
+                </div>
+            </div>
         )}
 
       </div>
-
-      {/* Pexels Browser Modal */}
-      {showPexelsBrowser && (
-        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
-          <div className="bg-zinc-900 w-full max-w-4xl max-h-[80vh] rounded-2xl border border-white/10 flex flex-col overflow-hidden">
-            {/* Header */}
-            <div className="p-4 border-b border-white/10 flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <div className="p-2 bg-emerald-600 rounded-lg">
-                  <ExternalLink size={18} className="text-white" />
-                </div>
-                <div>
-                  <h3 className="text-white font-bold">
-                    {pexelsTarget === 'albumArt' ? 'Select Center Image' : 'Select Background'}
-                  </h3>
-                  <p className="text-zinc-500 text-xs">
-                    {pexelsTarget === 'albumArt' ? 'Choose an image for the center circle' : 'Free stock photos & videos'}
-                  </p>
-                </div>
-              </div>
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={() => setShowPexelsApiKeyInput(!showPexelsApiKeyInput)}
-                  className={`p-2 hover:bg-white/10 rounded-lg ${pexelsApiKey ? 'text-emerald-400' : 'text-amber-400'}`}
-                  title={pexelsApiKey ? 'API key configured' : 'Set API key'}
-                >
-                  <Settings2 size={20} />
-                </button>
-                <button onClick={() => setShowPexelsBrowser(false)} className="p-2 hover:bg-white/10 rounded-lg text-zinc-400">
-                  <X size={20} />
-                </button>
-              </div>
-            </div>
-
-            {/* API Key Input */}
-            {showPexelsApiKeyInput && (
-              <div className="p-4 bg-zinc-800/50 border-b border-white/10 space-y-2">
-                <div className="flex items-center justify-between">
-                  <label className="text-sm font-medium text-zinc-300">Pexels API Key</label>
-                  <a
-                    href="https://www.pexels.com/api/new/"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-xs text-emerald-400 hover:underline flex items-center gap-1"
-                  >
-                    Get free API key <ExternalLink size={10} />
-                  </a>
-                </div>
-                <div className="flex gap-2">
-                  <input
-                    type="password"
-                    value={pexelsApiKey}
-                    onChange={(e) => setPexelsApiKey(e.target.value)}
-                    placeholder="Enter your Pexels API key..."
-                    className="flex-1 bg-zinc-900 rounded-lg px-4 py-2 text-sm text-white border border-white/10 placeholder-zinc-500"
-                  />
-                  <button
-                    onClick={() => savePexelsApiKey(pexelsApiKey)}
-                    className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 rounded-lg text-white font-bold text-sm"
-                  >
-                    Save
-                  </button>
-                </div>
-                <p className="text-xs text-zinc-500">Your API key is stored locally in your browser.</p>
-              </div>
-            )}
-
-            {/* Error Message */}
-            {pexelsError && (
-              <div className="px-4 py-2 bg-red-500/10 border-b border-red-500/20 text-red-400 text-sm flex items-center gap-2">
-                <span>{pexelsError}</span>
-                {!pexelsApiKey && (
-                  <button
-                    onClick={() => setShowPexelsApiKeyInput(true)}
-                    className="text-red-300 underline hover:text-red-200"
-                  >
-                    Set API key
-                  </button>
-                )}
-              </div>
-            )}
-
-            {/* Tabs & Search */}
-            <div className="p-4 border-b border-white/10 space-y-3">
-              {pexelsTarget !== 'albumArt' && (
-              <div className="flex gap-2">
-                <button
-                  onClick={() => { setPexelsTab('photos'); searchPexels(pexelsQuery, 'photos'); }}
-                  className={`px-4 py-2 rounded-lg text-sm font-bold flex items-center gap-2 ${pexelsTab === 'photos' ? 'bg-emerald-600 text-white' : 'bg-zinc-800 text-zinc-400'}`}
-                >
-                  <ImageIcon size={14} /> Photos
-                </button>
-                <button
-                  onClick={() => { setPexelsTab('videos'); searchPexels(pexelsQuery, 'videos'); }}
-                  className={`px-4 py-2 rounded-lg text-sm font-bold flex items-center gap-2 ${pexelsTab === 'videos' ? 'bg-emerald-600 text-white' : 'bg-zinc-800 text-zinc-400'}`}
-                >
-                  <Video size={14} /> Videos
-                </button>
-              </div>
-              )}
-              <div className="flex gap-2">
-                <input
-                  type="text"
-                  value={pexelsQuery}
-                  onChange={(e) => setPexelsQuery(e.target.value)}
-                  onKeyDown={(e) => e.key === 'Enter' && searchPexels(pexelsQuery, pexelsTab)}
-                  placeholder="Search for backgrounds..."
-                  className="flex-1 bg-zinc-800 rounded-lg px-4 py-2 text-sm text-white border border-white/10 placeholder-zinc-500"
-                />
-                <button
-                  onClick={() => searchPexels(pexelsQuery, pexelsTab)}
-                  disabled={pexelsLoading}
-                  className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 rounded-lg text-white font-bold text-sm flex items-center gap-2 disabled:opacity-50"
-                >
-                  {pexelsLoading ? <Loader2 size={14} className="animate-spin" /> : <Search size={14} />}
-                  Search
-                </button>
-              </div>
-              {/* Quick Tags */}
-              <div className="flex flex-wrap gap-2">
-                {['abstract', 'nature', 'city', 'space', 'neon', 'particles', 'smoke', 'fire', 'water', 'technology'].map(tag => (
-                  <button
-                    key={tag}
-                    onClick={() => { setPexelsQuery(tag); searchPexels(tag, pexelsTab); }}
-                    className="px-3 py-1 bg-zinc-800 hover:bg-zinc-700 rounded-full text-xs text-zinc-400 hover:text-white capitalize"
-                  >
-                    {tag}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {/* Results Grid */}
-            <div className="flex-1 overflow-y-auto p-4">
-              {pexelsLoading ? (
-                <div className="flex items-center justify-center h-48">
-                  <Loader2 size={32} className="animate-spin text-emerald-500" />
-                </div>
-              ) : pexelsTab === 'photos' ? (
-                <div className="grid grid-cols-3 gap-3">
-                  {pexelsPhotos.map(photo => (
-                    <button
-                      key={photo.id}
-                      onClick={() => selectPexelsPhoto(photo)}
-                      className="relative group rounded-lg overflow-hidden aspect-video bg-zinc-800"
-                    >
-                      <img src={photo.src.large} alt="" className="w-full h-full object-cover" />
-                      <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                        <span className="text-white text-xs font-bold bg-emerald-600 px-3 py-1 rounded-full">Select</span>
-                      </div>
-                      <div className="absolute bottom-0 left-0 right-0 p-2 bg-gradient-to-t from-black/80 to-transparent">
-                        <p className="text-[10px] text-zinc-300 truncate">by {photo.photographer}</p>
-                      </div>
-                    </button>
-                  ))}
-                </div>
-              ) : (
-                <div className="grid grid-cols-3 gap-3">
-                  {pexelsVideos.map(video => (
-                    <button
-                      key={video.id}
-                      onClick={() => selectPexelsVideo(video)}
-                      className="relative group rounded-lg overflow-hidden aspect-video bg-zinc-800"
-                    >
-                      <img src={video.image} alt="" className="w-full h-full object-cover" />
-                      <div className="absolute top-2 right-2 bg-black/60 px-2 py-0.5 rounded text-[10px] text-white font-bold">
-                        <Video size={10} className="inline mr-1" />VIDEO
-                      </div>
-                      <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                        <span className="text-white text-xs font-bold bg-emerald-600 px-3 py-1 rounded-full">Select</span>
-                      </div>
-                      <div className="absolute bottom-0 left-0 right-0 p-2 bg-gradient-to-t from-black/80 to-transparent">
-                        <p className="text-[10px] text-zinc-300 truncate">by {video.user.name}</p>
-                      </div>
-                    </button>
-                  ))}
-                </div>
-              )}
-
-              {!pexelsLoading && pexelsPhotos.length === 0 && pexelsTab === 'photos' && (
-                <p className="text-center text-zinc-500 py-8">No photos found. Try a different search term.</p>
-              )}
-              {!pexelsLoading && pexelsVideos.length === 0 && pexelsTab === 'videos' && (
-                <p className="text-center text-zinc-500 py-8">No videos found. Try a different search term.</p>
-              )}
-            </div>
-
-            {/* Footer */}
-            <div className="p-3 border-t border-white/10 bg-zinc-800/50">
-              <p className="text-[10px] text-zinc-500 text-center">
-                Photos and videos provided by <a href="https://www.pexels.com" target="_blank" rel="noopener noreferrer" className="text-emerald-400 hover:underline">Pexels</a>. Free for commercial use.
-              </p>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 };
+
+function KeyIcon(props: any) {
+    return (
+        <svg
+            {...props}
+            xmlns="http://www.w3.org/2000/svg"
+            width="24"
+            height="24"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+        >
+            <circle cx="7.5" cy="15.5" r="5.5" />
+            <path d="m21 2-9.6 9.6" />
+            <path d="m15.5 7.5 3 3L22 7l-3-3" />
+        </svg>
+    );
+}

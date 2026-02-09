@@ -10,6 +10,7 @@ import {
     Trash2,
     Share2
 } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 
 interface SongDropdownMenuProps {
     song: Song;
@@ -77,6 +78,7 @@ export const SongDropdownMenu: React.FC<SongDropdownMenuProps> = ({
     onCoverSong
 }) => {
     const menuRef = useRef<HTMLDivElement>(null);
+    const { t } = useTranslation();
 
     useEffect(() => {
         const handleClickOutside = (e: MouseEvent) => {
@@ -174,32 +176,32 @@ export const SongDropdownMenu: React.FC<SongDropdownMenuProps> = ({
             {/* Creative Actions */}
             <MenuItem
                 icon={<Video size={14} />}
-                label="Create Video"
+                label={t('actions.createVideo')}
                 onClick={() => handleAction(onCreateVideo)}
             />
             {isOwner && (
                 <MenuItem
                     icon={<Edit3 size={14} />}
-                    label="Edit Audio"
+                    label={t('actions.editAudio')}
                     onClick={onEditAudio ? () => handleAction(onEditAudio) : handleEditAudio}
                 />
             )}
             <MenuItem
                 icon={<Layers size={14} />}
-                label="Extract Stems"
+                label={t('actions.extractStems')}
                 onClick={onExtractStems ? () => handleAction(onExtractStems) : handleExtractStems}
             />
             {onReusePrompt && (
                 <MenuItem
                     icon={<Repeat size={14} />}
-                    label="Reuse Prompt"
+                    label={t('actions.reusePrompt')}
                     onClick={() => handleAction(onReusePrompt)}
                 />
             )}
             {onUseAsReference && (
                 <MenuItem
                     icon={<Layers size={14} />}
-                    label="Use as Reference"
+                    label={t('actions.useAsReference')}
                     onClick={() => handleAction(onUseAsReference)}
                     disabled={!song.audioUrl}
                 />
@@ -207,7 +209,7 @@ export const SongDropdownMenu: React.FC<SongDropdownMenuProps> = ({
             {onCoverSong && (
                 <MenuItem
                     icon={<Layers size={14} />}
-                    label="Cover Song"
+                    label={t('actions.coverSong')}
                     onClick={() => handleAction(onCoverSong)}
                     disabled={!song.audioUrl}
                 />
@@ -218,17 +220,17 @@ export const SongDropdownMenu: React.FC<SongDropdownMenuProps> = ({
             {/* Library Actions */}
             <MenuItem
                 icon={<ListPlus size={14} />}
-                label="Add to Playlist"
+                label={t('actions.addToPlaylist')}
                 onClick={() => handleAction(onAddToPlaylist)}
             />
             <MenuItem
                 icon={<Download size={14} />}
-                label="Download"
+                label={t('actions.download')}
                 onClick={onDownload ? () => handleAction(onDownload) : handleDownload}
             />
             <MenuItem
                 icon={<Share2 size={14} />}
-                label="Share"
+                label={t('actions.share')}
                 onClick={() => handleAction(onShare)}
             />
 
@@ -238,7 +240,7 @@ export const SongDropdownMenu: React.FC<SongDropdownMenuProps> = ({
                     <MenuDivider />
                     <MenuItem
                         icon={<Trash2 size={14} />}
-                        label="Delete Song"
+                        label={t('actions.deleteSong')}
                         onClick={() => handleAction(onDelete)}
                         danger
                     />

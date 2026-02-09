@@ -4,6 +4,7 @@ import { songsApi, getAudioUrl } from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import { ArrowLeft, Play, Pause, Heart, Share2, MoreHorizontal, ThumbsDown, Music as MusicIcon, Edit3, Eye } from 'lucide-react';
 import { ShareModal } from './ShareModal';
+import { useTranslation } from 'react-i18next';
 
 interface SongProfileProps {
     songId: string;
@@ -81,6 +82,7 @@ const resetMetaTags = () => {
 
 export const SongProfile: React.FC<SongProfileProps> = ({ songId, onBack, onPlay, onNavigateToProfile, currentSong, isPlaying, likedSongIds = new Set(), onToggleLike }) => {
     const { user, token } = useAuth();
+    const { t } = useTranslation();
     const [song, setSong] = useState<Song | null>(null);
     const [loading, setLoading] = useState(true);
     const [shareModalOpen, setShareModalOpen] = useState(false);
@@ -138,7 +140,7 @@ export const SongProfile: React.FC<SongProfileProps> = ({ songId, onBack, onPlay
             <div className="flex items-center justify-center h-full bg-zinc-50 dark:bg-black">
                 <div className="text-zinc-500 dark:text-zinc-400 flex items-center gap-2">
                     <div className="w-4 h-4 border-2 border-zinc-400 border-t-transparent rounded-full animate-spin" />
-                    Loading song...
+                    {t('song.loading')}
                 </div>
             </div>
         );
@@ -147,9 +149,9 @@ export const SongProfile: React.FC<SongProfileProps> = ({ songId, onBack, onPlay
     if (!song) {
         return (
             <div className="flex flex-col items-center justify-center h-full gap-4 bg-zinc-50 dark:bg-black">
-                <div className="text-zinc-500 dark:text-zinc-400">Song not found</div>
+                <div className="text-zinc-500 dark:text-zinc-400">{t('song.notFound')}</div>
                 <button onClick={onBack} className="px-4 py-2 bg-zinc-200 dark:bg-zinc-800 hover:bg-zinc-300 dark:hover:bg-zinc-700 rounded-lg text-zinc-900 dark:text-white transition-colors">
-                    Go Back
+                    {t('common.goBack')}
                 </button>
             </div>
         );
@@ -164,7 +166,7 @@ export const SongProfile: React.FC<SongProfileProps> = ({ songId, onBack, onPlay
                     className="flex items-center gap-2 text-zinc-500 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-white mb-4 transition-colors"
                 >
                     <ArrowLeft size={20} />
-                    <span>Back</span>
+                    <span>{t('common.back')}</span>
                 </button>
 
                 <div className="flex flex-col md:flex-row md:items-start justify-between gap-4">
@@ -182,7 +184,7 @@ export const SongProfile: React.FC<SongProfileProps> = ({ songId, onBack, onPlay
                                         song.creator ? song.creator[0].toUpperCase() : 'A'
                                     )}
                                 </div>
-                                <span className="text-zinc-900 dark:text-white font-semibold">{song.creator || 'Anonymous'}</span>
+                                <span className="text-zinc-900 dark:text-white font-semibold">{song.creator || t('common.anonymous')}</span>
                             </div>
                         </div>
 
@@ -206,13 +208,13 @@ export const SongProfile: React.FC<SongProfileProps> = ({ songId, onBack, onPlay
                     {/* Related Songs Tab - Hidden on mobile */}
                     <div className="hidden md:flex items-center gap-2">
                         <button className="px-4 py-2 bg-zinc-900 dark:bg-white text-white dark:text-black rounded-full text-sm font-semibold">
-                            Similar
+                            {t('song.similar')}
                         </button>
                         <button
                             onClick={() => song.creator && onNavigateToProfile(song.creator)}
                             className="px-4 py-2 text-zinc-500 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-white text-sm font-semibold transition-colors"
                         >
-                            By {song.creator || 'Artist'}
+                            {t('song.by', { artist: song.creator || 'Artist' })}
                         </button>
                     </div>
                 </div>
@@ -272,7 +274,7 @@ export const SongProfile: React.FC<SongProfileProps> = ({ songId, onBack, onPlay
                                     className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 px-3 py-2 rounded-full text-sm font-semibold transition-colors text-white"
                                 >
                                     <Edit3 size={16} />
-                                    <span className="hidden md:inline">Edit</span>
+                                    <span className="hidden md:inline">{t('actions.edit')}</span>
                                 </button>
                             )}
                             <button
@@ -289,7 +291,7 @@ export const SongProfile: React.FC<SongProfileProps> = ({ songId, onBack, onPlay
                         {/* Lyrics */}
                         {song.lyrics && (
                             <div className="bg-white dark:bg-zinc-900/50 border border-zinc-200 dark:border-zinc-800 rounded-xl p-4">
-                                <h3 className="text-sm font-semibold text-zinc-900 dark:text-white mb-3">Lyrics</h3>
+                                <h3 className="text-sm font-semibold text-zinc-900 dark:text-white mb-3">{t('rightSidebar.lyrics')}</h3>
                                 <div className="text-sm text-zinc-700 dark:text-zinc-300 whitespace-pre-line leading-relaxed max-h-72 md:max-h-96 overflow-y-auto">
                                     {song.lyrics}
                                 </div>

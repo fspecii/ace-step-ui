@@ -19,11 +19,13 @@ import { List } from 'lucide-react';
 import { PlaylistDetail } from './components/PlaylistDetail';
 import { Toast, ToastType } from './components/Toast';
 import { SearchPage } from './components/SearchPage';
+import { useTranslation } from 'react-i18next';
 
 
 export default function App() {
   // Responsive
   const { isMobile, isDesktop } = useResponsive();
+  const { t } = useTranslation();
 
   // Auth
   const { user, token, isAuthenticated, isLoading: authLoading, setupUser, logout } = useAuth();
@@ -1286,7 +1288,7 @@ export default function App() {
                 onClick={() => setMobileShowList(!mobileShowList)}
                 className="bg-zinc-800 text-white px-4 py-2 rounded-full shadow-lg border border-white/10 flex items-center gap-2 text-sm font-bold"
               >
-                {mobileShowList ? 'Create Song' : 'View List'}
+                {mobileShowList ? t('common.createSong') : t('common.viewList')}
                 <List size={16} />
               </button>
             </div>

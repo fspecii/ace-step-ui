@@ -5,6 +5,7 @@ import { useAuth } from '../context/AuthContext';
 import { SongDropdownMenu } from './SongDropdownMenu';
 import { ShareModal } from './ShareModal';
 import { AlbumCover } from './AlbumCover';
+import { useTranslation } from 'react-i18next';
 
 interface LibraryViewProps {
   allSongs: Song[];
@@ -47,6 +48,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
     onDeleteReferenceTrack,
 }) => {
     const { user } = useAuth();
+    const { t } = useTranslation();
     const [activeTab, setActiveTab] = useState<'all' | 'playlists' | 'liked' | 'uploads'>('all');
     const [shareModalOpen, setShareModalOpen] = useState(false);
     const [shareSong, setShareSong] = useState<Song | null>(null);
@@ -67,13 +69,13 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
         <>
         <div className="flex-1 bg-white dark:bg-black overflow-y-auto custom-scrollbar p-6 lg:p-10 pb-32 transition-colors duration-300">
              <div className="flex items-center justify-between mb-8">
-                <h1 className="text-3xl font-bold text-zinc-900 dark:text-white">Your Library</h1>
+                <h1 className="text-3xl font-bold text-zinc-900 dark:text-white">{t('library.title')}</h1>
                 <button 
                     onClick={onCreatePlaylist}
                     className="flex items-center gap-2 bg-zinc-900 dark:bg-zinc-800 hover:bg-zinc-800 dark:hover:bg-zinc-700 text-white px-4 py-2 rounded-full font-medium transition-colors shadow-lg shadow-zinc-900/10 dark:shadow-none"
                 >
                     <Plus size={18} />
-                    <span>New Playlist</span>
+                    <span>{t('library.newPlaylist')}</span>
                 </button>
              </div>
 
@@ -83,28 +85,28 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                     onClick={() => setActiveTab('all')}
                     className={`pb-3 text-sm font-bold transition-colors relative ${activeTab === 'all' ? 'text-zinc-900 dark:text-white' : 'text-zinc-500 hover:text-zinc-900 dark:hover:text-white'}`}
                  >
-                    All Songs
+                    {t('library.tabs.all')}
                     {activeTab === 'all' && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-green-500 rounded-full"></div>}
                  </button>
                  <button 
                     onClick={() => setActiveTab('liked')}
                     className={`pb-3 text-sm font-bold transition-colors relative ${activeTab === 'liked' ? 'text-zinc-900 dark:text-white' : 'text-zinc-500 hover:text-zinc-900 dark:hover:text-white'}`}
                  >
-                    Liked Songs
+                    {t('library.tabs.liked')}
                     {activeTab === 'liked' && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-green-500 rounded-full"></div>}
                  </button>
                  <button 
                     onClick={() => setActiveTab('playlists')}
                     className={`pb-3 text-sm font-bold transition-colors relative ${activeTab === 'playlists' ? 'text-zinc-900 dark:text-white' : 'text-zinc-500 hover:text-zinc-900 dark:hover:text-white'}`}
                  >
-                    Playlists
+                    {t('library.tabs.playlists')}
                     {activeTab === 'playlists' && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-green-500 rounded-full"></div>}
                  </button>
                  <button 
                     onClick={() => setActiveTab('uploads')}
                     className={`pb-3 text-sm font-bold transition-colors relative ${activeTab === 'uploads' ? 'text-zinc-900 dark:text-white' : 'text-zinc-500 hover:text-zinc-900 dark:hover:text-white'}`}
                  >
-                    Uploads
+                    {t('library.tabs.uploads')}
                     {activeTab === 'uploads' && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-green-500 rounded-full"></div>}
                  </button>
              </div>
@@ -113,7 +115,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
              {activeTab === 'all' && (
                  <div className="space-y-1">
                     {allSongs.length === 0 ? (
-                        <div className="text-sm text-zinc-500 dark:text-zinc-400">No songs yet.</div>
+                        <div className="text-sm text-zinc-500 dark:text-zinc-400">{t('library.empty.songs')}</div>
                     ) : (
                         allSongs.map((song, idx) => (
                             <div key={song.id} className="group flex items-center gap-4 p-2 rounded hover:bg-zinc-100 dark:hover:bg-white/10 transition-colors" onClick={() => onPlaySong(song, allSongs)}>
@@ -168,10 +170,10 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                             <Heart fill="white" size={64} className="text-white" />
                          </div>
                          <div className="mb-2">
-                             <h2 className="text-sm font-bold uppercase text-zinc-500 dark:text-white mb-2">Playlist</h2>
-                             <h1 className="text-5xl font-extrabold text-zinc-900 dark:text-white mb-4">Liked Songs</h1>
+                             <h2 className="text-sm font-bold uppercase text-zinc-500 dark:text-white mb-2">{t('common.playlist')}</h2>
+                             <h1 className="text-5xl font-extrabold text-zinc-900 dark:text-white mb-4">{t('library.likedSongs')}</h1>
                              <div className="text-sm text-zinc-500 dark:text-zinc-300 font-medium">
-                                 {likedSongs.length} songs
+                                 {t('common.songCount', { count: likedSongs.length })}
                              </div>
                          </div>
                          <div className="ml-auto mb-2 opacity-0 group-hover:opacity-100 transition-opacity">
@@ -241,7 +243,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                                  )}
                              </div>
                              <h3 className="font-bold text-zinc-900 dark:text-white truncate">{playlist.name}</h3>
-                             <p className="text-sm text-zinc-500 dark:text-zinc-400 line-clamp-2">{playlist.description || `By You`}</p>
+                             <p className="text-sm text-zinc-500 dark:text-zinc-400 line-clamp-2">{playlist.description || t('common.byYou')}</p>
                          </div>
                      ))}
                  </div>
@@ -249,7 +251,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
              {activeTab === 'uploads' && (
                  <div className="space-y-2">
                     {referenceTracks.length === 0 ? (
-                        <div className="text-sm text-zinc-500 dark:text-zinc-400">No uploads yet.</div>
+                        <div className="text-sm text-zinc-500 dark:text-zinc-400">{t('library.empty.uploads')}</div>
                     ) : (
                         referenceTracks.map((track) => (
                             <div key={track.id} className="flex items-center gap-4 p-3 rounded-lg border border-zinc-200 dark:border-white/5 bg-white dark:bg-zinc-900/40">
@@ -265,7 +267,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                                 <button
                                     className="p-2 rounded-full hover:bg-zinc-200 dark:hover:bg-white/5 text-zinc-500 hover:text-red-600 transition-colors"
                                     onClick={() => onDeleteReferenceTrack?.(track.id)}
-                                    title="Delete upload"
+                                    title={t('actions.deleteUpload')}
                                 >
                                     <Trash2 size={16} />
                                 </button>

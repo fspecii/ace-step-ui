@@ -1,6 +1,7 @@
 import React from 'react';
 import { Library, Disc, Search, User, LogIn, LogOut, Sun, Moon } from 'lucide-react';
 import { View } from '../types';
+import { useTranslation } from 'react-i18next';
 
 interface SidebarProps {
   currentView: View;
@@ -23,6 +24,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onLogout,
   onOpenSettings,
 }) => {
+  const { t } = useTranslation();
+
   return (
     <div className="flex flex-col h-full bg-white dark:bg-suno-sidebar border-r border-zinc-200 dark:border-white/5 flex-shrink-0 w-[72px] items-center py-4 z-30 transition-colors duration-300 overflow-y-auto scrollbar-hide">
       {/* Logo */}
@@ -41,19 +44,19 @@ export const Sidebar: React.FC<SidebarProps> = ({
       <nav className="flex-1 flex flex-col gap-4 w-full px-3">
         <NavItem
           icon={<Disc size={24} />}
-          label="Create"
+          label={t('sidebar.create')}
           active={currentView === 'create'}
           onClick={() => onNavigate('create')}
         />
         <NavItem
           icon={<Library size={24} />}
-          label="Library"
+          label={t('sidebar.library')}
           active={currentView === 'library'}
           onClick={() => onNavigate('library')}
         />
         <NavItem
           icon={<Search size={24} />}
-          label="Search"
+          label={t('sidebar.search')}
           active={currentView === 'search'}
           onClick={() => onNavigate('search')}
         />
@@ -62,7 +65,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
           <button
             onClick={onToggleTheme}
             className="w-10 h-10 rounded-full hover:bg-zinc-100 dark:hover:bg-white/10 flex items-center justify-center text-zinc-500 dark:text-zinc-400 hover:text-black dark:hover:text-white transition-colors mx-auto"
-            title={theme === 'dark' ? 'Light Mode' : 'Dark Mode'}
+            title={theme === 'dark' ? t('sidebar.lightMode') : t('sidebar.darkMode')}
           >
             {theme === 'dark' ? <Sun size={20} /> : <Moon size={20} />}
           </button>
@@ -72,7 +75,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
               <div
                 onClick={onOpenSettings}
                 className="w-8 h-8 rounded-full bg-gradient-to-br from-pink-500 to-purple-600 flex items-center justify-center text-white text-xs font-bold cursor-pointer border border-white/20 hover:scale-110 transition-transform overflow-hidden"
-                title={`${user.username} - Settings`}
+                title={`${user.username} - ${t('sidebar.settings')}`}
               >
                 {user.avatar_url ? (
                   <img src={user.avatar_url} alt={user.username} className="w-full h-full object-cover" />
@@ -83,7 +86,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
               <button
                 onClick={onLogout}
                 className="w-8 h-8 rounded-full hover:bg-red-500/20 flex items-center justify-center text-zinc-500 hover:text-red-500 transition-colors"
-                title="Sign Out"
+                title={t('sidebar.signOut')}
               >
                 <LogOut size={16} />
               </button>
@@ -92,7 +95,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
             <button
               onClick={onLogin}
               className="w-10 h-10 rounded-full hover:bg-zinc-100 dark:hover:bg-white/10 flex items-center justify-center text-zinc-500 dark:text-zinc-400 hover:text-pink-500 transition-colors mx-auto"
-              title="Sign In"
+              title={t('sidebar.signIn')}
             >
               <LogIn size={20} />
             </button>
