@@ -89,7 +89,8 @@
 | **Custom Mode** | Fine-tune BPM, key, time signature, and duration |
 | **Style Tags** | Define genre, mood, tempo, and instrumentation |
 | **Batch Generation** | Generate multiple variations at once |
-| **Thinking Mode** | Let AI enhance your prompts automatically |
+| **AI Enhance** | Enrich genre tags into detailed captions with proper BPM/key/time |
+| **Thinking Mode** | Let AI reason about structure and generate audio codes |
 
 ### 🎨 Advanced Parameters
 | Feature | Description |
@@ -134,7 +135,7 @@
 |-------|-------------|
 | **Frontend** | React 18, TypeScript, TailwindCSS, Vite |
 | **Backend** | Express.js, SQLite, better-sqlite3 |
-| **AI Engine** | [ACE-Step 1.5](https://github.com/ace-step/ACE-Step-1.5) |
+| **AI Engine** | [ACE-Step 1.5](https://github.com/ace-step/ACE-Step-1.5) (Gradio API) |
 | **Audio Tools** | AudioMass, Demucs, FFmpeg |
 
 ---
@@ -184,9 +185,9 @@ start-all.bat
 
 ### 🪟 Windows - Manual Start
 ```batch
-REM 1. Start ACE-Step API
+REM 1. Start ACE-Step Gradio (with API endpoints)
 cd C:\ACE-Step-1.5
-python_embeded\python acestep\api_server.py
+python_embeded\python -m acestep --port 8001 --enable-api --backend pt --server-name 127.0.0.1
 
 REM 2. Start ACE-Step UI (in another terminal)
 cd ace-step-ui
@@ -198,7 +199,7 @@ start.bat
 cd ace-step-ui
 ./start-all.sh
 ```
-**That's it!** This starts everything: API + Backend + Frontend in one command.
+**That's it!** This starts everything: Gradio + Backend + Frontend in one command.
 
 > **Note:** By default, it looks for ACE-Step in `../ACE-Step-1.5`.
 > If yours is elsewhere, set `ACESTEP_PATH` first:
@@ -210,9 +211,9 @@ cd ace-step-ui
 
 ### Linux / macOS - Manual Start
 ```bash
-# 1. Start ACE-Step API (in ACE-Step-1.5 directory)
+# 1. Start ACE-Step Gradio with API (in ACE-Step-1.5 directory)
 cd /path/to/ACE-Step-1.5
-uv run acestep-api --port 8001
+uv run acestep --port 8001 --enable-api --backend pt --server-name 127.0.0.1
 
 # 2. Start ACE-Step UI (in another terminal)
 cd ace-step-ui
@@ -221,9 +222,9 @@ cd ace-step-ui
 
 ### Windows (Standard Installation)
 ```batch
-REM 1. Start ACE-Step API (in ACE-Step-1.5 directory)
+REM 1. Start ACE-Step Gradio with API (in ACE-Step-1.5 directory)
 cd C:\path\to\ACE-Step-1.5
-uv run acestep-api --port 8001
+uv run acestep --port 8001 --enable-api --backend pt --server-name 127.0.0.1
 
 REM 2. Start ACE-Step UI (in another terminal)
 cd ace-step-ui
@@ -311,27 +312,27 @@ copy server\.env.example server\.env
 
 ## 🎮 Usage
 
-### Step 1: Start ACE-Step API Server
+### Step 1: Start ACE-Step Gradio Server
 
 **🪟 Windows Portable Package:**
 ```batch
 cd C:\ACE-Step-1.5
-python_embeded\python acestep\api_server.py
+python_embeded\python -m acestep --port 8001 --enable-api --backend pt --server-name 127.0.0.1
 ```
 
 **Linux / macOS:**
 ```bash
 cd /path/to/ACE-Step-1.5
-uv run acestep-api --port 8001
+uv run acestep --port 8001 --enable-api --backend pt --server-name 127.0.0.1
 ```
 
 **Windows (Standard Installation):**
 ```batch
 cd C:\path\to\ACE-Step-1.5
-uv run acestep-api --port 8001
+uv run acestep --port 8001 --enable-api --backend pt --server-name 127.0.0.1
 ```
 
-Wait for "Application startup complete" before proceeding.
+Wait for "API endpoints enabled" before proceeding.
 
 ### Step 2: Start ACE-Step UI
 
@@ -364,7 +365,7 @@ Edit `server/.env`:
 # Server
 PORT=3001
 
-# ACE-Step API (seamless integration)
+# ACE-Step Gradio URL (must match --port used when starting ACE-Step)
 ACESTEP_API_URL=http://localhost:8001
 
 # Database (local-first, no cloud)
@@ -394,6 +395,16 @@ Full control over every parameter:
 | **BPM** | 60-200 beats per minute |
 | **Key** | Musical key (C major, A minor, etc.) |
 
+### AI Enhance & Thinking Mode
+
+| Mode | What it does | Speed impact |
+|------|-------------|--------------|
+| **AI Enhance OFF** | Sends your style tags directly to the model | Fastest |
+| **AI Enhance ON** | LLM enriches your tags into a detailed caption and generates proper BPM, key, time signature | +10-20s |
+| **Thinking Mode** | Full LLM reasoning with audio code generation | Slowest, best quality |
+
+> **Tip:** If your genre tags (e.g. "pop, rock") produce ballad-like output, turn on **AI Enhance** for much better genre accuracy. No extra VRAM needed — the LLM runs on CPU with the PT backend.
+
 ### Batch Size & Bulk Generation
 
 | Setting | Description |
@@ -421,9 +432,10 @@ Full control over every parameter:
 
 | Issue | Solution |
 |-------|----------|
-| **ACE-Step API not reachable** | Ensure API server is running (see Usage section) |
-| **CUDA out of memory** | Switch LM Backend to **PT**, set batch size to **1**, reduce duration, or disable Thinking Mode |
+| **ACE-Step not reachable** | Ensure Gradio server is running with `--enable-api` flag (see Usage section) |
+| **CUDA out of memory** | Use `--backend pt` (default), set batch size to **1**, reduce duration, or disable Thinking Mode |
 | **4GB GPU - Out of memory** | Use **PT** backend (default), batch size **1**, and keep **Thinking Mode OFF**. LLM features require 12GB+ |
+| **Genre always sounds like ballad** | Enable **AI Enhance** toggle in the Style section — it enriches your tags with proper metadata |
 | **AttributeError: 'NoneType'** | Update to latest ACE-Step-1.5 (fix merged in PR #109) |
 | **Songs show 0:00 duration** | Install FFmpeg: `sudo apt install ffmpeg` (Linux) or download from [ffmpeg.org](https://ffmpeg.org) (Windows) |
 | **LAN access not working** | Check firewall allows ports 3000 and 3001 |
