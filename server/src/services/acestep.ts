@@ -27,7 +27,6 @@ const __dirname = path.dirname(__filename);
 const AUDIO_DIR = path.join(__dirname, '../../public/audio');
 
 const ACESTEP_API = config.acestep.apiUrl;
-const LORA_CONFIG_PATH = config.acestep.loraConfigPath;
 
 // Resolve ACE-Step path (from env or default relative path)
 function resolveAceStepPath(): string {
@@ -606,9 +605,8 @@ async function processGenerationViaPython(
   const prompt = params.customMode ? caption : (params.songDescription || caption);
   const lyrics = params.instrumental ? '' : (params.lyrics || '');
 
-  const preferLocal = Boolean(LORA_CONFIG_PATH && LORA_CONFIG_PATH.trim());
-  // Check if ACE-Step API is available (unless LoRA auto-load is configured)
-  const useApi = preferLocal ? false : await isApiAvailable();
+  // Check if ACE-Step API is available
+  const useApi = await isApiAvailable();
 
   if (useApi) {
     console.log(`Job ${jobId}: Using ACE-Step REST API`, {
@@ -671,9 +669,8 @@ async function processGenerationViaPython(
     return;
   }
 
-  const localReason = preferLocal ? 'LoRA config enabled' : 'API not available';
-  // Fall back to Python spawn if API not available or LoRA config is enabled
-  console.log(`Job ${jobId}: Using Python spawn (${localReason})`, {
+  // Fall back to Python spawn if API not available
+  console.log(`Job ${jobId}: Using Python spawn (API not available)`, {
     prompt: prompt.slice(0, 50),
     lyricsPreview: lyrics.slice(0, 50),
     duration: params.duration,
@@ -946,7 +943,6 @@ function runPythonGeneration(
       env: {
         ...process.env,
         ACESTEP_PATH: ACESTEP_DIR,
-        ACESTEP_LORA_CONFIG: LORA_CONFIG_PATH,
         ...envOverrides,
       },
     });

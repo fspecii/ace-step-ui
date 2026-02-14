@@ -11,7 +11,7 @@ import re
 import sys
 import time
 import torch
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Optional
 
 # Get ACE-Step path from environment or use default
 ACESTEP_PATH = os.environ.get('ACESTEP_PATH', '/home/ambsd/Desktop/aceui/ACE-Step-1.5')
@@ -27,18 +27,8 @@ from acestep.gpu_config import get_gpu_config, get_recommended_lm_model, is_lm_m
 # Global handlers (initialized once)
 _handler = None
 _llm_handler = None
-_lora_initialized = False
 _llm_init_attempted = False
-_lora_loaded_adapter_names: List[str] = []
-_lora_default_adapter: Optional[str] = None
-_lora_adapter_scales: Dict[str, float] = {}
-_lora_alias_to_internal: Dict[str, str] = {}
-_lora_adapter_kinds: Dict[str, str] = {}
-_lokr_adapters: Dict[str, Any] = {}
-_active_lokr_adapter: Optional[str] = None
 
-# Optional LoRA auto-load config
-LORA_CONFIG_PATH = os.environ.get("ACESTEP_LORA_CONFIG")
 PROGRESS_PREFIX = "__ACE_STEP_PROGRESS__"
 
 
@@ -58,490 +48,6 @@ def _emit_progress_event(progress: float, stage: Optional[str] = None) -> None:
         flush=True,
     )
 
-
-def _normalize_lora_instances(config: Dict[str, Any]) -> List[Dict[str, Any]]:
-    instances = config.get("instances")
-    if not isinstance(instances, list):
-        return []
-
-    normalized: List[Dict[str, Any]] = []
-    used_names: set[str] = set()
-
-    for idx, item in enumerate(instances):
-        if not isinstance(item, dict):
-            continue
-        raw_path = item.get("path")
-        if not isinstance(raw_path, str) or not raw_path.strip():
-            continue
-        enabled = item.get("enabled", True)
-        if enabled is False:
-            continue
-
-        raw_name = item.get("name")
-        if isinstance(raw_name, str) and raw_name.strip():
-            name = raw_name.strip()
-        else:
-            name = f"adapter_{idx + 1}"
-
-        if name in used_names:
-            base_name = name
-            suffix = 2
-            while f"{base_name}_{suffix}" in used_names:
-                suffix += 1
-            name = f"{base_name}_{suffix}"
-
-        used_names.add(name)
-        normalized.append(
-            {
-                "name": name,
-                "path": raw_path.strip(),
-                "scale": item.get("scale"),
-            }
-        )
-
-    return normalized
-
-
-def _resolve_lora_path(raw_path: str) -> str:
-    lora_path = raw_path.strip()
-    if not os.path.isabs(lora_path):
-        lora_path = os.path.normpath(os.path.join(os.path.dirname(LORA_CONFIG_PATH), lora_path))
-    return lora_path
-
-
-def _normalize_lora_scale(value: Any) -> Optional[float]:
-    if value is None:
-        return None
-    try:
-        parsed = float(value)
-    except (TypeError, ValueError):
-        return None
-    return max(0.0, min(1.0, parsed))
-
-
-def _get_lokr_weights_path(lora_path: str) -> Optional[str]:
-    if os.path.isfile(lora_path):
-        if lora_path.lower().endswith(".safetensors"):
-            return lora_path
-        return None
-    if not os.path.isdir(lora_path):
-        return None
-    direct = os.path.join(lora_path, "lokr_weights.safetensors")
-    if os.path.isfile(direct):
-        return direct
-    final = os.path.join(lora_path, "final", "lokr_weights.safetensors")
-    if os.path.isfile(final):
-        return final
-    return None
-
-
-def _detect_adapter_kind(lora_path: str) -> Optional[str]:
-    if os.path.isfile(os.path.join(lora_path, "adapter_config.json")):
-        return "lora"
-    if _get_lokr_weights_path(lora_path):
-        return "lokr"
-    return None
-
-
-def _read_lokr_config(lora_path: str) -> Dict[str, Any]:
-    defaults: Dict[str, Any] = {
-        "linear_dim": 64,
-        "linear_alpha": 128,
-        "factor": -1,
-        "decompose_both": False,
-        "use_tucker": False,
-        "use_scalar": False,
-        "weight_decompose": False,
-        "target_modules": ["q_proj", "k_proj", "v_proj", "o_proj"],
-        "full_matrix": False,
-        "bypass_mode": False,
-        "rs_lora": False,
-        "unbalanced_factorization": False,
-    }
-    meta_path = os.path.join(lora_path, "metadata.json")
-    if not os.path.isfile(meta_path):
-        return defaults
-    try:
-        with open(meta_path, "r", encoding="utf-8") as f:
-            payload = json.load(f)
-    except Exception:
-        return defaults
-    if not isinstance(payload, dict):
-        return defaults
-    raw = payload.get("lokr_config")
-    if isinstance(raw, dict):
-        for key in defaults:
-            if key in raw:
-                defaults[key] = raw[key]
-    return defaults
-
-
-def _set_lokr_multiplier(adapter_name: str, multiplier: float) -> bool:
-    net = _lokr_adapters.get(adapter_name)
-    if net is None:
-        return False
-    changed = False
-    try:
-        if hasattr(net, "set_multiplier"):
-            net.set_multiplier(float(multiplier))
-            changed = True
-        elif hasattr(net, "multiplier"):
-            net.multiplier = float(multiplier)
-            changed = True
-    except Exception:
-        pass
-    for module in getattr(net, "loras", []) or []:
-        try:
-            if hasattr(module, "multiplier"):
-                module.multiplier = float(multiplier)
-                changed = True
-            elif hasattr(module, "scale"):
-                module.scale = float(multiplier)
-                changed = True
-        except Exception:
-            continue
-    return changed
-
-
-def _set_active_lokr_adapter(adapter_name: str) -> bool:
-    global _active_lokr_adapter
-    if adapter_name not in _lokr_adapters:
-        return False
-    ok = False
-    for name in _lokr_adapters.keys():
-        scale = _lora_adapter_scales.get(name, 1.0)
-        target = scale if name == adapter_name else 0.0
-        ok = _set_lokr_multiplier(name, target) or ok
-    _active_lokr_adapter = adapter_name
-    return ok
-
-
-def _load_lokr_adapter(handler: "AceStepHandler", lora_path: str, name: str) -> bool:
-    weights_path = _get_lokr_weights_path(lora_path)
-    if not weights_path:
-        print(f"[ACE-Step] LoKr load failed (name={name}): lokr_weights.safetensors not found", file=sys.stderr)
-        return False
-    decoder = getattr(getattr(handler, "model", None), "decoder", None)
-    if decoder is None:
-        print(f"[ACE-Step] LoKr load failed (name={name}): decoder unavailable", file=sys.stderr)
-        return False
-    try:
-        from lycoris import LycorisNetwork, create_lycoris
-    except Exception as e:
-        print(f"[ACE-Step] LoKr load failed (name={name}): LyCORIS unavailable ({e})", file=sys.stderr)
-        return False
-
-    cfg = _read_lokr_config(lora_path)
-    target_modules = cfg.get("target_modules")
-    if not isinstance(target_modules, list) or not target_modules:
-        target_modules = ["q_proj", "k_proj", "v_proj", "o_proj"]
-    try:
-        LycorisNetwork.apply_preset(
-            {
-                "unet_target_name": target_modules,
-                "target_name": target_modules,
-            }
-        )
-    except Exception:
-        pass
-
-    try:
-        net = create_lycoris(
-            decoder,
-            1.0,
-            linear_dim=int(cfg.get("linear_dim", 64)),
-            linear_alpha=int(cfg.get("linear_alpha", 128)),
-            algo="lokr",
-            factor=int(cfg.get("factor", -1)),
-            decompose_both=bool(cfg.get("decompose_both", False)),
-            use_tucker=bool(cfg.get("use_tucker", False)),
-            use_scalar=bool(cfg.get("use_scalar", False)),
-            full_matrix=bool(cfg.get("full_matrix", False)),
-            bypass_mode=bool(cfg.get("bypass_mode", False)),
-            rs_lora=bool(cfg.get("rs_lora", False)),
-            unbalanced_factorization=bool(cfg.get("unbalanced_factorization", False)),
-        )
-        if bool(cfg.get("weight_decompose", False)):
-            try:
-                net = create_lycoris(
-                    decoder,
-                    1.0,
-                    linear_dim=int(cfg.get("linear_dim", 64)),
-                    linear_alpha=int(cfg.get("linear_alpha", 128)),
-                    algo="lokr",
-                    factor=int(cfg.get("factor", -1)),
-                    decompose_both=bool(cfg.get("decompose_both", False)),
-                    use_tucker=bool(cfg.get("use_tucker", False)),
-                    use_scalar=bool(cfg.get("use_scalar", False)),
-                    full_matrix=bool(cfg.get("full_matrix", False)),
-                    bypass_mode=bool(cfg.get("bypass_mode", False)),
-                    rs_lora=bool(cfg.get("rs_lora", False)),
-                    unbalanced_factorization=bool(cfg.get("unbalanced_factorization", False)),
-                    dora_wd=True,
-                )
-            except Exception:
-                pass
-        net.apply_to()
-        net.load_weights(weights_path)
-        _lokr_adapters[name] = net
-        print(f"[ACE-Step] ✅ LoKr loaded from {weights_path} (name={name})", file=sys.stderr)
-        return True
-    except Exception as e:
-        print(f"[ACE-Step] LoKr load failed (name={name}, path={weights_path}): {e}", file=sys.stderr)
-        return False
-
-
-def _activate_adapter(handler: "AceStepHandler", alias: str) -> None:
-    global _active_lokr_adapter
-    kind = _lora_adapter_kinds.get(alias, "lora")
-    if kind == "lokr":
-        if hasattr(handler, "set_use_lora"):
-            try:
-                handler.set_use_lora(False)
-            except Exception:
-                pass
-        ok = _set_active_lokr_adapter(alias)
-        if ok:
-            print(f"[ACE-Step] ✅ Active LoKr adapter: {alias}", file=sys.stderr)
-        else:
-            print(f"[ACE-Step] Failed to activate LoKr adapter: {alias}", file=sys.stderr)
-        return
-
-    # Default to PEFT LoRA behavior.
-    if hasattr(handler, "set_use_lora"):
-        try:
-            handler.set_use_lora(True)
-        except Exception:
-            pass
-    if _lokr_adapters:
-        for name in _lokr_adapters.keys():
-            _set_lokr_multiplier(name, 0.0)
-    _active_lokr_adapter = None
-    target_internal = _lora_alias_to_internal.get(alias, alias)
-    if hasattr(handler, "set_active_lora_adapter"):
-        try:
-            set_status = handler.set_active_lora_adapter(target_internal)
-            print(f"[ACE-Step] {set_status} (alias={alias})", file=sys.stderr)
-        except Exception as e:
-            print(f"[ACE-Step] Failed to set active LoRA adapter ({alias}->{target_internal}): {e}", file=sys.stderr)
-
-
-def _apply_adapter_scale(handler: "AceStepHandler", alias: str, scale_val: float) -> None:
-    kind = _lora_adapter_kinds.get(alias, "lora")
-    if kind == "lokr":
-        ok = _set_lokr_multiplier(alias, scale_val)
-        if ok:
-            print(f"[ACE-Step] ✅ LoKr scale: {scale_val:.2f} (name={alias})", file=sys.stderr)
-        else:
-            print(f"[ACE-Step] LoKr scale set failed (name={alias})", file=sys.stderr)
-        return
-    try:
-        scale_status = handler.set_lora_scale(scale_val)
-        print(f"[ACE-Step] {scale_status} (name={alias})", file=sys.stderr)
-    except Exception as e:
-        print(f"[ACE-Step] LoRA scale set failed (name={alias}): {e}", file=sys.stderr)
-
-
-def _is_prefix_match(text: str, label: str) -> bool:
-    text_l = text.lower()
-    label_l = label.lower()
-    if not text_l.startswith(label_l):
-        return False
-    if len(text_l) == len(label_l):
-        return True
-    next_char = text_l[len(label_l)]
-    return next_char.isspace() or next_char in ",.:;!?)]-_/'\\\""
-
-
-def _select_adapter_from_prompt(prompt: str) -> Optional[str]:
-    if not _lora_loaded_adapter_names:
-        return None
-    text = (prompt or "").lstrip()
-    if not text:
-        return _lora_default_adapter
-
-    # Prefer longer names first to avoid short-name shadowing.
-    for name in sorted(_lora_loaded_adapter_names, key=len, reverse=True):
-        if _is_prefix_match(text, name):
-            return name
-
-    return _lora_default_adapter
-
-
-def _apply_active_adapter_for_prompt(handler: "AceStepHandler", prompt: str) -> None:
-    target = _select_adapter_from_prompt(prompt)
-    if not target:
-        return
-    kind = _lora_adapter_kinds.get(target, "lora")
-
-    if kind == "lora":
-        target_internal = _lora_alias_to_internal.get(target, target)
-        current_active: Optional[str] = None
-        lora_enabled = True
-        if hasattr(handler, "get_lora_status"):
-            try:
-                status = handler.get_lora_status()
-                if isinstance(status, dict):
-                    active = status.get("active_adapter")
-                    if isinstance(active, str):
-                        current_active = active
-                    active_flag = status.get("active")
-                    if isinstance(active_flag, bool):
-                        lora_enabled = active_flag
-            except Exception:
-                pass
-        if current_active != target_internal or not lora_enabled:
-            _activate_adapter(handler, target)
-            print(f"[ACE-Step] Active adapter auto-selected from prompt: {target}", file=sys.stderr)
-    else:
-        if _active_lokr_adapter != target:
-            _activate_adapter(handler, target)
-            print(f"[ACE-Step] Active adapter auto-selected from prompt: {target}", file=sys.stderr)
-
-    scale_val = _lora_adapter_scales.get(target)
-    if scale_val is not None:
-        _apply_adapter_scale(handler, target, scale_val)
-
-
-def _load_lora_from_config(handler: "AceStepHandler") -> None:
-    global _lora_initialized, _lora_loaded_adapter_names, _lora_default_adapter, _lora_adapter_scales, _lora_alias_to_internal, _lora_adapter_kinds
-    if _lora_initialized:
-        return
-    _lora_initialized = True
-
-    if not LORA_CONFIG_PATH:
-        return
-    if not os.path.exists(LORA_CONFIG_PATH):
-        return
-
-    try:
-        with open(LORA_CONFIG_PATH, "r", encoding="utf-8") as f:
-            config = json.load(f)
-    except Exception as e:
-        print(f"[ACE-Step] LoRA config read failed: {e}", file=sys.stderr)
-        return
-
-    if not isinstance(config, dict):
-        print("[ACE-Step] LoRA config invalid: root is not an object", file=sys.stderr)
-        return
-
-    normalized = _normalize_lora_instances(config)
-    if not normalized:
-        return
-
-    default_name = config.get("default")
-    ordered_instances: List[Dict[str, Any]] = list(normalized)
-    if isinstance(default_name, str) and default_name.strip():
-        match_idx = next((i for i, x in enumerate(ordered_instances) if x["name"] == default_name.strip()), None)
-        if match_idx is not None and match_idx > 0:
-            ordered_instances.insert(0, ordered_instances.pop(match_idx))
-
-    loaded_instances: List[Dict[str, Any]] = []
-    first_lora_loaded = False
-
-    for item in ordered_instances:
-        name = item["name"]
-        lora_path = _resolve_lora_path(item["path"])
-        adapter_kind = _detect_adapter_kind(lora_path)
-        if not adapter_kind:
-            print(
-                f"[ACE-Step] Adapter skipped (name={name}, path={lora_path}): "
-                "expected PEFT LoRA folder (adapter_config.json) or LoKr weights (lokr_weights.safetensors)",
-                file=sys.stderr,
-            )
-            continue
-
-        try:
-            if adapter_kind == "lokr":
-                if not _load_lokr_adapter(handler, lora_path, name):
-                    continue
-                item["kind"] = "lokr"
-                loaded_instances.append(item)
-                continue
-
-            # LoRA (PEFT)
-            if not first_lora_loaded:
-                status = handler.load_lora(lora_path)
-                print(f"[ACE-Step] {status} (name={name})", file=sys.stderr)
-                if not str(status).startswith("✅"):
-                    continue
-                first_lora_loaded = True
-                item["kind"] = "lora"
-                loaded_instances.append(item)
-                continue
-
-            decoder = getattr(getattr(handler, "model", None), "decoder", None)
-            if decoder is None or not hasattr(decoder, "load_adapter"):
-                print(
-                    f"[ACE-Step] Additional LoRA adapter skipped (name={name}): decoder.load_adapter() unavailable",
-                    file=sys.stderr,
-                )
-                continue
-
-            try:
-                decoder.load_adapter(lora_path, adapter_name=name, is_trainable=False)
-            except TypeError:
-                decoder.load_adapter(lora_path, adapter_name=name)
-
-            print(f"[ACE-Step] ✅ LoRA loaded from {lora_path} (name={name})", file=sys.stderr)
-            item["kind"] = "lora"
-            loaded_instances.append(item)
-        except Exception as e:
-            print(f"[ACE-Step] Adapter load failed (name={name}, path={lora_path}): {e}", file=sys.stderr)
-
-    if not loaded_instances:
-        return
-
-    has_peft_lora = any(x.get("kind") == "lora" for x in loaded_instances)
-    if has_peft_lora and hasattr(handler, "_rebuild_lora_registry"):
-        try:
-            handler._rebuild_lora_registry()
-        except Exception:
-            pass
-
-    loaded_names = [x["name"] for x in loaded_instances]
-    _lora_loaded_adapter_names = loaded_names
-    _lora_alias_to_internal = {name: name for name in loaded_names}
-    _lora_adapter_kinds = {x["name"]: x.get("kind", "lora") for x in loaded_instances}
-
-    # ACE-Step's load_lora() loads the first adapter under internal name "default".
-    # Keep user-facing names from config, but map aliases to internal adapter names.
-    if has_peft_lora and loaded_names and hasattr(handler, "get_lora_status"):
-        try:
-            status = handler.get_lora_status()
-            if isinstance(status, dict):
-                adapters = status.get("adapters")
-                if isinstance(adapters, list) and adapters:
-                    first_lora_alias = next((n for n in loaded_names if _lora_adapter_kinds.get(n) == "lora"), None)
-                    if first_lora_alias and isinstance(adapters[0], str) and adapters[0]:
-                        _lora_alias_to_internal[first_lora_alias] = adapters[0]
-        except Exception:
-            pass
-    active_name = loaded_names[0]
-    if isinstance(default_name, str) and default_name.strip() and default_name.strip() in loaded_names:
-        active_name = default_name.strip()
-    _lora_default_adapter = active_name
-
-    _lora_adapter_scales = {}
-    for item in loaded_instances:
-        scale_val = _normalize_lora_scale(item.get("scale"))
-        if scale_val is not None:
-            _lora_adapter_scales[item["name"]] = scale_val
-
-    _activate_adapter(handler, active_name)
-
-    # Apply scale per adapter by activating each adapter and setting scale.
-    for item in loaded_instances:
-        name = item["name"]
-        scale_val = _lora_adapter_scales.get(name)
-        if scale_val is None:
-            continue
-        try:
-            _activate_adapter(handler, name)
-            _apply_adapter_scale(handler, name, scale_val)
-        except Exception as e:
-            print(f"[ACE-Step] Adapter scale set failed (name={name}): {e}", file=sys.stderr)
-    _activate_adapter(handler, active_name)
 
 
 def _env_bool(name: str, default: bool) -> bool:
@@ -693,7 +199,6 @@ def get_handlers():
             device=device,
             offload_to_cpu=True,  # For 12GB GPU
         )
-        _load_lora_from_config(_handler)
         _llm_handler = LLMHandler()
         _initialize_llm_if_configured(_llm_handler, device)
     return _handler, _llm_handler
@@ -735,8 +240,8 @@ def generate(
     lm_top_p: float = 0.9,
     lm_negative_prompt: str = "",
     use_cot_metas: bool = True,
-    use_cot_caption: bool = False,
-    use_cot_language: bool = False,
+    use_cot_caption: bool = True,
+    use_cot_language: bool = True,
 
     # Advanced parameters
     use_adg: bool = False,
@@ -749,7 +254,6 @@ def generate(
     """Generate music and return audio file paths."""
     _emit_progress_event(0.01, "Initializing ACE-Step...")
     handler, llm_handler = get_handlers()
-    _apply_active_adapter_for_prompt(handler, prompt)
     _emit_progress_event(0.10, "Models initialized")
 
     if output_dir is None:
@@ -921,13 +425,9 @@ def main():
     parser.add_argument("--lm-top-k", type=int, default=0, help="LLM top-k sampling")
     parser.add_argument("--lm-top-p", type=float, default=0.9, help="LLM top-p sampling")
     parser.add_argument("--lm-negative-prompt", type=str, default="", help="LLM negative prompt")
-    parser.add_argument("--cot-metas", dest="use_cot_metas", action="store_true", help="Enable CoT for metadata")
-    parser.add_argument("--no-cot-metas", dest="use_cot_metas", action="store_false", help="Disable CoT for metadata")
-    parser.add_argument("--cot-caption", dest="use_cot_caption", action="store_true", help="Enable CoT for caption")
-    parser.add_argument("--no-cot-caption", dest="use_cot_caption", action="store_false", help="Disable CoT for caption")
-    parser.add_argument("--cot-language", dest="use_cot_language", action="store_true", help="Enable CoT for language")
-    parser.add_argument("--no-cot-language", dest="use_cot_language", action="store_false", help="Disable CoT for language")
-    parser.set_defaults(use_cot_metas=True, use_cot_caption=False, use_cot_language=False)
+    parser.add_argument("--no-cot-metas", action="store_true", help="Disable CoT for metadata")
+    parser.add_argument("--no-cot-caption", action="store_true", help="Disable CoT for caption")
+    parser.add_argument("--no-cot-language", action="store_true", help="Disable CoT for language")
 
     # Advanced parameters
     parser.add_argument("--use-adg", action="store_true", help="Use Adaptive Dual Guidance")
@@ -977,9 +477,9 @@ def main():
             lm_top_k=args.lm_top_k,
             lm_top_p=args.lm_top_p,
             lm_negative_prompt=args.lm_negative_prompt,
-            use_cot_metas=args.use_cot_metas,
-            use_cot_caption=args.use_cot_caption,
-            use_cot_language=args.use_cot_language,
+            use_cot_metas=not args.no_cot_metas,
+            use_cot_caption=not args.no_cot_caption,
+            use_cot_language=not args.no_cot_language,
 
             # Advanced
             use_adg=args.use_adg,

@@ -368,63 +368,12 @@ PORT=3001
 # ACE-Step Gradio URL (must match --port used when starting ACE-Step)
 ACESTEP_API_URL=http://localhost:8001
 
-# Optional: LoRA auto-load (forces local Python spawn mode)
-# Point to a JSON config file (see config/lora.json for schema)
-ACESTEP_LORA_CONFIG=./config/lora.json
-
 # Database (local-first, no cloud)
 DATABASE_PATH=./data/acestep.db
 
 # Optional: Pexels API for video backgrounds
 PEXELS_API_KEY=your_key_here
 ```
-
----
-
-## 🧩 LoRA Auto-Load
-
-ACE-Step UI can auto-load one or more LoRA adapters at startup by reading a JSON config file and invoking the ACE-Step 1.5 handler. This is handled in the local Python spawn path (not the REST API). When `ACESTEP_LORA_CONFIG` is set, generation will run locally so LoRA adapters can be loaded.
-
-### How It Works
-1. Create or edit a LoRA config file (example at `config/lora.json`).
-2. Set `ACESTEP_LORA_CONFIG` in `server/.env` to the config path.
-3. Restart ACE-Step UI backend (and the UI if running).
-
-### LoRA Config Schema
-The config is a JSON object with these fields:
-
-1. `default` (string, optional): name of the adapter to make active after load.
-2. `instances` (array, required): list of LoRA entries.
-
-Each entry in `instances`:
-
-1. `name` (string, required): label for the LoRA.
-2. `path` (string, required): path to an adapter.
-   - PEFT LoRA: directory containing `adapter_config.json`.
-   - LoKr (LyCORIS): directory containing `lokr_weights.safetensors` (or `final/lokr_weights.safetensors`), or a direct `.safetensors` file path.
-3. `scale` (number, optional): LoRA strength in the range `0.0` to `1.0`. Start at `0.85`, increase toward `1.0` for stronger style, decrease toward `0.6` if it overwhelms the base model.
-4. `enabled` (boolean, optional): set `false` to skip this entry.
-
-### Example
-```json
-{
-  "default": "my_lora",
-  "instances": [
-    {
-      "name": "my_lora",
-      "path": "../ACE-Step-1.5/lora_output/final_lora",
-      "scale": 0.85,
-      "enabled": true
-    }
-  ]
-}
-```
-
-### Notes
-- All enabled entries are loaded (when supported by the installed ACE-Step runtime and local dependencies such as PEFT/LyCORIS). If `default` is set and found, that adapter is made active; otherwise the first loaded adapter is active.
-- Per-entry `scale` is applied by temporarily activating each adapter and setting its scale.
-- Relative paths are resolved from the LoRA config file location.
-- LoRA auto-load uses the local Python spawn path, not the ACE-Step REST API. Keep the API server stopped or accept that generations will run locally when LoRA is configured.
 
 ---
 
