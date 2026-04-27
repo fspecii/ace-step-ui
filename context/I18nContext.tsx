@@ -12,7 +12,7 @@ const I18nContext = createContext<I18nContextType | undefined>(undefined);
 export const I18nProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const [language, setLanguage] = useState<Language>(() => {
     const stored = localStorage.getItem('language') as Language;
-    return stored === 'zh' || stored === 'en' || stored === 'ja' || stored === 'ko' ? stored : 'en';
+    return stored === 'pt' || stored === 'zh' || stored === 'en' || stored === 'ja' || stored === 'ko' ? stored : 'pt';
   });
 
   const handleSetLanguage = (lang: Language) => {
