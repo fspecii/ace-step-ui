@@ -3,19 +3,10 @@ import multer from 'multer';
 import path from 'path';
 import { pool } from '../db/pool.js';
 import { authMiddleware, optionalAuthMiddleware, AuthenticatedRequest } from '../middleware/auth.js';
+import { resolvePublicAudioUrl } from '../services/audioUrls.js';
 import { getStorageProvider } from '../services/storage/factory.js';
 
 const router = Router();
-
-async function resolvePublicAudioUrl(audioUrl: string | null): Promise<string | null> {
-    if (!audioUrl) return null;
-    if (audioUrl.startsWith('s3://')) {
-        const storageKey = audioUrl.replace('s3://', '');
-        const storage = getStorageProvider();
-        return storage.getPublicUrl(storageKey);
-    }
-    return audioUrl;
-}
 
 const upload = multer({
   storage: multer.memoryStorage(),

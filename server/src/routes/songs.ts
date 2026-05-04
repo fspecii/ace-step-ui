@@ -3,33 +3,10 @@ import { Readable } from 'node:stream';
 import { v4 as uuidv4 } from 'uuid';
 import { pool } from '../db/pool.js';
 import { authMiddleware, optionalAuthMiddleware, AuthenticatedRequest } from '../middleware/auth.js';
+import { resolveAccessibleAudioUrl, resolveAudioUrl } from '../services/audioUrls.js';
 import { getStorageProvider } from '../services/storage/factory.js';
 
 const router = Router();
-
-// Helper: resolve audio URL (generates signed URL for S3)
-async function resolveAudioUrl(audioUrl: string | null): Promise<string | null> {
-  if (!audioUrl) return null;
-
-  if (audioUrl.startsWith('s3://')) {
-    const storageKey = audioUrl.replace('s3://', '');
-    const storage = getStorageProvider();
-    return storage.getUrl(storageKey, 3600); // 1 hour expiry
-  }
-
-  return audioUrl;
-}
-
-// Helper: resolve audio URL for direct playback
-async function resolveAccessibleAudioUrl(audioUrl: string | null, isPublic: boolean): Promise<string | null> {
-  if (!audioUrl) return null;
-  if (audioUrl.startsWith('s3://')) {
-    const storageKey = audioUrl.replace('s3://', '');
-    const storage = getStorageProvider();
-    return isPublic ? storage.getPublicUrl(storageKey) : storage.getUrl(storageKey, 3600);
-  }
-  return audioUrl;
-}
 
 // Get audio - proxies from S3 to avoid CORS issues
 router.get('/:id/audio', optionalAuthMiddleware, async (req: AuthenticatedRequest, res: Response) => {
