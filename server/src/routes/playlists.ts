@@ -2,19 +2,9 @@ import { Router, Response } from 'express';
 import { v4 as uuidv4 } from 'uuid';
 import { pool } from '../db/pool.js';
 import { authMiddleware, optionalAuthMiddleware, AuthenticatedRequest } from '../middleware/auth.js';
-import { getStorageProvider } from '../services/storage/factory.js';
+import { resolveAccessibleAudioUrl } from '../services/audioUrls.js';
 
 const router = Router();
-
-async function resolveAccessibleAudioUrl(audioUrl: string | null, isPublic: boolean): Promise<string | null> {
-    if (!audioUrl) return null;
-    if (audioUrl.startsWith('s3://')) {
-        const storageKey = audioUrl.replace('s3://', '');
-        const storage = getStorageProvider();
-        return isPublic ? storage.getPublicUrl(storageKey) : storage.getUrl(storageKey, 3600);
-    }
-    return audioUrl;
-}
 
 // Create playlist
 router.post('/', authMiddleware, async (req: AuthenticatedRequest, res: Response) => {
