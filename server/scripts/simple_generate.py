@@ -25,7 +25,7 @@ from acestep.inference import GenerationParams, GenerationConfig, generate_music
 _handler = None
 _llm_handler = None
 
-def get_handlers():
+def get_handlers(config_path="acestep-v15-turbo"):
     global _handler, _llm_handler
     if _handler is None:
         if torch.cuda.is_available():
@@ -37,7 +37,7 @@ def get_handlers():
         _handler = AceStepHandler()
         _handler.initialize_service(
             project_root=ACESTEP_PATH,
-            config_path="acestep-v15-turbo",
+            config_path=config_path,
             device=device,
             offload_to_cpu=True,  # For 12GB GPU
         )
@@ -89,11 +89,14 @@ def generate(
     cfg_interval_start: float = 0.0,
     cfg_interval_end: float = 1.0,
 
+    # Model
+    config_path: str = "acestep-v15-turbo",
+
     # Output
     output_dir: str = None,
 ):
     """Generate music and return audio file paths."""
-    handler, llm_handler = get_handlers()
+    handler, llm_handler = get_handlers(config_path)
 
     if output_dir is None:
         output_dir = os.path.join(ACESTEP_PATH, "output")
@@ -213,6 +216,10 @@ def main():
     parser.add_argument("--no-cot-caption", action="store_true", help="Disable CoT for caption")
     parser.add_argument("--no-cot-language", action="store_true", help="Disable CoT for language")
 
+    # Model/config parameter
+    parser.add_argument("--config", type=str, default="acestep-v15-turbo",
+                        help="ACE-Step config/model name (e.g. acestep-v15-turbo, acestep-v15-sft)")
+
     # Advanced parameters
     parser.add_argument("--use-adg", action="store_true", help="Use Adaptive Dual Guidance")
     parser.add_argument("--cfg-interval-start", type=float, default=0.0, help="CFG interval start")
@@ -269,6 +276,9 @@ def main():
             use_adg=args.use_adg,
             cfg_interval_start=args.cfg_interval_start,
             cfg_interval_end=args.cfg_interval_end,
+
+            # Model/config
+            config_path=args.config,
 
             # Output
             output_dir=args.output_dir,

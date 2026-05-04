@@ -673,6 +673,7 @@ async function processGenerationViaPython(
       '--infer-steps', String(params.inferenceSteps ?? 8),
       '--guidance-scale', String(params.guidanceScale ?? 10.0),
       '--audio-format', params.audioFormat ?? 'mp3',
+      '--config', params.ditModel ?? 'acestep-v15-turbo',
       '--output-dir', jobOutputDir,
       '--json',
     ];
