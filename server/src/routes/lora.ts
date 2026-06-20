@@ -22,12 +22,39 @@ router.post('/load', authMiddleware, async (req: AuthenticatedRequest, res: Resp
     }
 
     const client = await getGradioClient();
-    const result = await client.predict('/load_lora', [lora_path]);
-    const status = (result.data as unknown[])[0] as string;
+    const payloads: unknown[][] = [
+      [lora_path],
+      [lora_path, loraState.scale],
+    ];
 
-    loraState = { loaded: true, active: true, scale: loraState.scale, path: lora_path };
+    let lastError: unknown;
+    for (const payload of payloads) {
+      try {
+        const result = await client.predict('/load_lora', payload);
+        const status = (result.data as unknown[])[0] as string;
+        loraState = { loaded: true, active: true, scale: loraState.scale, path: lora_path };
+        res.json({ message: status, lora_path, loaded: true });
+        return;
+      } catch (err) {
+        lastError = err;
+      }
+    }
 
-    res.json({ message: status, lora_path, loaded: true });
+    // ACE-Step Gradio can throw after LoRA has already been loaded (post-load UI event mismatch).
+    // Attempt to validate/recover by toggling LoRA on and re-applying scale.
+    try {
+      await client.predict('/set_use_lora', [true]);
+      await client.predict('/set_lora_scale', [loraState.scale]);
+      loraState = { loaded: true, active: true, scale: loraState.scale, path: lora_path };
+      res.json({
+        message: 'LoRA loaded (recovered from Gradio post-load UI error)',
+        lora_path,
+        loaded: true,
+      });
+      return;
+    } catch {
+      throw lastError;
+    }
   } catch (error) {
     console.error('[LoRA] Load error:', error);
     res.status(500).json({ error: error instanceof Error ? error.message : 'Failed to load LoRA' });

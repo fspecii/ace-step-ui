@@ -128,7 +128,8 @@ async function prepareAudioFile(audioUrl: string | undefined): Promise<unknown> 
 }
 
 /**
- * Build the 50 positional arguments for the Gradio /generation_wrapper endpoint.
+ * Build positional arguments for the Gradio /generation_wrapper endpoint.
+ * Keep this order aligned with ACE-Step's gradio_ui/events/__init__.py.
  */
 async function buildGradioArgs(params: GenerationParams): Promise<unknown[]> {
   const caption = params.style || 'pop music';
@@ -181,7 +182,7 @@ async function buildGradioArgs(params: GenerationParams): Promise<unknown[]> {
     params.audioFormat || 'mp3',                                  // 27: Audio Format
     params.lmTemperature ?? 0.85,                                 // 28: LM Temperature
     isThinking,                                                   // 29: Think
-    params.lmCfgScale ?? 2.0,                                    // 30: LM CFG Scale
+    params.lmCfgScale ?? 2.0,                                     // 30: LM CFG Scale
     params.lmTopK ?? 0,                                           // 31: LM Top-K
     params.lmTopP ?? 0.9,                                         // 32: LM Top-P
     params.lmNegativePrompt || 'NO USER INPUT',                   // 33: LM Negative Prompt
@@ -654,8 +655,8 @@ async function processGenerationViaPython(
   const prompt = params.customMode ? caption : (params.songDescription || caption);
   const lyrics = params.instrumental ? '' : (params.lyrics || '');
 
-  // Check if ACE-Step API is available
-  const useApi = await isApiAvailable();
+  // REST API helper path is not wired in this branch; keep local spawn fallback stable.
+  const useApi = false;
 
   if (useApi) {
     console.log(`Job ${jobId}: Using ACE-Step REST API`, {
