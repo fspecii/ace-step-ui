@@ -1,8 +1,20 @@
 import { Router, Response } from 'express';
 import { authMiddleware, AuthenticatedRequest } from '../middleware/auth.js';
 import { getGradioClient } from '../services/gradio-client.js';
+import { config } from '../config/index.js';
+import path from 'path';
 
 const router = Router();
+
+function resolveContainedPath(baseDir: string, inputPath: string, label: string): string {
+  const base = path.resolve(baseDir);
+  const resolved = path.isAbsolute(inputPath) ? path.resolve(inputPath) : path.resolve(base, inputPath);
+  const withinBase = resolved === base || resolved.startsWith(`${base}${path.sep}`);
+  if (!withinBase) {
+    throw new Error(`${label} must be inside ${baseDir}`);
+  }
+  return resolved;
+}
 
 // Local LoRA state tracking (Gradio doesn't have a dedicated status endpoint)
 let loraState = {
@@ -21,10 +33,15 @@ router.post('/load', authMiddleware, async (req: AuthenticatedRequest, res: Resp
       return;
     }
 
+    const aceStepRoot = process.env.ACESTEP_PATH
+      ? (path.isAbsolute(process.env.ACESTEP_PATH) ? process.env.ACESTEP_PATH : path.resolve(process.cwd(), process.env.ACESTEP_PATH))
+      : path.resolve(config.datasets.dir, '..');
+    const resolvedLoraPath = resolveContainedPath(aceStepRoot, lora_path, 'lora_path');
+
     const client = await getGradioClient();
     const payloads: unknown[][] = [
-      [lora_path],
-      [lora_path, loraState.scale],
+      [resolvedLoraPath],
+      [resolvedLoraPath, loraState.scale],
     ];
 
     let lastError: unknown;
@@ -32,8 +49,8 @@ router.post('/load', authMiddleware, async (req: AuthenticatedRequest, res: Resp
       try {
         const result = await client.predict('/load_lora', payload);
         const status = (result.data as unknown[])[0] as string;
-        loraState = { loaded: true, active: true, scale: loraState.scale, path: lora_path };
-        res.json({ message: status, lora_path, loaded: true });
+        loraState = { loaded: true, active: true, scale: loraState.scale, path: resolvedLoraPath };
+        res.json({ message: status, lora_path: resolvedLoraPath, loaded: true });
         return;
       } catch (err) {
         lastError = err;
@@ -45,10 +62,10 @@ router.post('/load', authMiddleware, async (req: AuthenticatedRequest, res: Resp
     try {
       await client.predict('/set_use_lora', [true]);
       await client.predict('/set_lora_scale', [loraState.scale]);
-      loraState = { loaded: true, active: true, scale: loraState.scale, path: lora_path };
+      loraState = { loaded: true, active: true, scale: loraState.scale, path: resolvedLoraPath };
       res.json({
         message: 'LoRA loaded (recovered from Gradio post-load UI error)',
-        lora_path,
+        lora_path: resolvedLoraPath,
         loaded: true,
       });
       return;

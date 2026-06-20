@@ -1,5 +1,6 @@
 import { Router, Request, Response } from 'express';
 import jwt, { SignOptions } from 'jsonwebtoken';
+import { isIP } from 'net';
 import { pool } from '../db/pool.js';
 import { generateUUID } from '../db/sqlite.js';
 import { config } from '../config/index.js';
@@ -8,6 +9,30 @@ import { authMiddleware, AuthenticatedRequest } from '../middleware/auth.js';
 const jwtOptions = { expiresIn: config.jwt.expiresIn } as SignOptions;
 
 const router = Router();
+
+function isLoopbackRequest(req: Request): boolean {
+  const forwardedFor = req.headers['x-forwarded-for'];
+  const candidate = typeof forwardedFor === 'string' ? forwardedFor.split(',')[0].trim() : '';
+  const address = candidate || req.ip || req.socket.remoteAddress || '';
+
+  if (!address) {
+    return false;
+  }
+
+  if (address === '::1' || address === '127.0.0.1' || address === 'localhost') {
+    return true;
+  }
+
+  if (address.startsWith('::ffff:127.')) {
+    return true;
+  }
+
+  if (isIP(address) === 4) {
+    return address.startsWith('127.');
+  }
+
+  return false;
+}
 
 interface SetupBody {
   username: string;
@@ -18,7 +43,12 @@ function issueAccessToken(payload: { id: string; username: string }): string {
 }
 
 // Auto-login: Get the default user from database (for local single-user app)
-router.get('/auto', async (_req: Request, res: Response) => {
+router.get('/auto', async (req: Request, res: Response) => {
+  if (!isLoopbackRequest(req)) {
+    res.status(403).json({ error: 'Auto-login is only available from localhost' });
+    return;
+  }
+
   try {
     // Get the first user from the database (local app typically has one user)
     const result = await pool.query(

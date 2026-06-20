@@ -2,6 +2,8 @@ import dotenv from 'dotenv';
 import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
+import { lookup } from 'dns/promises';
+import { isIP } from 'net';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
@@ -29,6 +31,92 @@ import { pool } from './db/pool.js';
 import './db/migrate.js';
 
 const app = express();
+const MAX_IMAGE_REDIRECTS = 3;
+
+function isPrivateIpLiteral(address: string): boolean {
+  if (address.startsWith('::ffff:')) {
+    return isPrivateIpLiteral(address.slice('::ffff:'.length));
+  }
+
+  if (isIP(address) === 4) {
+    const [a, b] = address.split('.').map(Number);
+    if (a === 10 || a === 127) return true;
+    if (a === 192 && b === 168) return true;
+    if (a === 169 && b === 254) return true;
+    if (a === 172 && b >= 16 && b <= 31) return true;
+    return false;
+  }
+
+  const normalized = address.toLowerCase();
+  return normalized === '::1' || normalized.startsWith('fc') || normalized.startsWith('fd') || normalized.startsWith('fe80');
+}
+
+async function isSafeRemoteUrl(url: string): Promise<boolean> {
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    return false;
+  }
+
+  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+    return false;
+  }
+
+  const host = parsed.hostname.toLowerCase();
+  if (host === 'localhost' || host.endsWith('.localhost')) {
+    return false;
+  }
+
+  if (isIP(host) && isPrivateIpLiteral(host)) {
+    return false;
+  }
+
+  if (!isIP(host)) {
+    try {
+      const records = await lookup(host, { all: true });
+      if (records.some(record => isPrivateIpLiteral(record.address))) {
+        return false;
+      }
+    } catch {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+async function fetchSafeImage(url: string, redirectCount = 0): Promise<Response> {
+  if (redirectCount > MAX_IMAGE_REDIRECTS) {
+    throw new Error('Too many redirects');
+  }
+
+  if (!(await isSafeRemoteUrl(url))) {
+    throw new Error('Unsafe image URL');
+  }
+
+  const response = await fetch(url, { redirect: 'manual' });
+  if (response.status >= 300 && response.status < 400) {
+    const location = response.headers.get('location');
+    if (!location) {
+      throw new Error('Redirect without location');
+    }
+
+    const nextUrl = new URL(location, url).toString();
+    return fetchSafeImage(nextUrl, redirectCount + 1);
+  }
+
+  if (!response.ok) {
+    return response;
+  }
+
+  const contentType = response.headers.get('content-type') || '';
+  if (!contentType.toLowerCase().startsWith('image/')) {
+    throw new Error('Remote content is not an image');
+  }
+
+  return response;
+}
 
 // Security headers
 app.use(helmet({
@@ -233,7 +321,7 @@ app.get('/api/proxy/image', async (req, res) => {
   }
 
   try {
-    const response = await fetch(url);
+    const response = await fetchSafeImage(url);
     if (!response.ok) {
       res.status(response.status).json({ error: 'Failed to fetch image' });
       return;

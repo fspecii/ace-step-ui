@@ -7,23 +7,59 @@ import multer from 'multer';
 import path from 'path';
 import { existsSync, readdirSync, statSync, readFileSync } from 'fs';
 import { mkdir, writeFile, readFile } from 'fs/promises';
-import { execSync, spawn } from 'child_process';
+import { execFileSync, spawn } from 'child_process';
 import { randomUUID } from 'crypto';
 
 const router = Router();
+const SAFE_DATASET_NAME = /^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$/;
+
+function validateDatasetName(datasetName: unknown, fallback = 'default'): string {
+  const value = typeof datasetName === 'string' ? datasetName.trim() : '';
+  const candidate = value || fallback;
+  if (!SAFE_DATASET_NAME.test(candidate) || candidate.includes('..')) {
+    throw new Error('Invalid dataset name');
+  }
+  return candidate;
+}
+
+function resolveContainedPath(baseDir: string, inputPath: string, label: string): string {
+  const base = path.resolve(baseDir);
+  const resolved = path.isAbsolute(inputPath) ? path.resolve(inputPath) : path.resolve(base, inputPath);
+  const withinBase = resolved === base || resolved.startsWith(`${base}${path.sep}`);
+  if (!withinBase) {
+    throw new Error(`${label} must be inside ${baseDir}`);
+  }
+  return resolved;
+}
+
+function resolveDatasetScopedPath(inputPath: string, label: string): string {
+  const aceStepDir = getAceStepDir();
+  const resolved = resolveContainedPath(aceStepDir, inputPath, label);
+  const datasetsRoot = path.resolve(config.datasets.dir);
+  const withinDatasets = resolved === datasetsRoot || resolved.startsWith(`${datasetsRoot}${path.sep}`);
+  if (!withinDatasets) {
+    throw new Error(`${label} must be inside ${config.datasets.dir}`);
+  }
+  return resolved;
+}
+
+function resolveDatasetUploadDir(datasetName: unknown): string {
+  const safeName = validateDatasetName(datasetName);
+  return resolveContainedPath(config.datasets.uploadsDir, safeName, 'Dataset directory');
+}
 
 // --- Audio upload via multer disk storage ---
 const AUDIO_EXTENSIONS = ['.wav', '.mp3', '.flac', '.ogg', '.opus'];
 
 const audioStorage = multer.diskStorage({
   destination: async (_req: Request, _file, cb) => {
-    const datasetName = (_req.body?.datasetName as string) || 'default';
-    const dest = path.join(config.datasets.uploadsDir, datasetName);
+    let dest: string;
     try {
+      dest = resolveDatasetUploadDir(_req.body?.datasetName);
       await mkdir(dest, { recursive: true });
       cb(null, dest);
     } catch (err) {
-      cb(err as Error, dest);
+      cb(err as Error, config.datasets.uploadsDir);
     }
   },
   filename: (_req, file, cb) => {
@@ -51,8 +87,9 @@ const audioUpload = multer({
 // Get audio duration via ffprobe
 function getAudioDuration(filePath: string): number {
   try {
-    const result = execSync(
-      `ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 "${filePath}"`,
+    const result = execFileSync(
+      'ffprobe',
+      ['-v', 'error', '-show_entries', 'format=duration', '-of', 'default=noprint_wrappers=1:nokey=1', filePath],
       { encoding: 'utf-8', timeout: 10000 }
     );
     const duration = parseFloat(result.trim());
@@ -82,8 +119,7 @@ router.post('/upload-audio', authMiddleware, audioUpload.array('audio', 50), asy
       return;
     }
 
-    const datasetName = (req.body?.datasetName as string) || 'default';
-    const uploadDir = path.join(config.datasets.uploadsDir, datasetName);
+    const uploadDir = resolveDatasetUploadDir(req.body?.datasetName);
 
     res.json({
       files: files.map(f => ({
@@ -111,9 +147,10 @@ router.post('/build-dataset', authMiddleware, async (req: AuthenticatedRequest, 
       allInstrumental = true,
     } = req.body;
 
-    const audioDir = path.join(config.datasets.uploadsDir, datasetName);
+    const safeDatasetName = validateDatasetName(datasetName, 'my_lora_dataset');
+    const audioDir = resolveDatasetUploadDir(safeDatasetName);
     if (!existsSync(audioDir)) {
-      res.status(400).json({ error: `Audio directory not found: uploads/${datasetName}` });
+      res.status(400).json({ error: `Audio directory not found: uploads/${safeDatasetName}` });
       return;
     }
 
@@ -166,7 +203,7 @@ router.post('/build-dataset', authMiddleware, async (req: AuthenticatedRequest, 
     // Build dataset JSON
     const dataset = {
       metadata: {
-        name: datasetName,
+        name: safeDatasetName,
         custom_tag: customTag,
         tag_position: tagPosition,
         created_at: new Date().toISOString(),
@@ -179,7 +216,7 @@ router.post('/build-dataset', authMiddleware, async (req: AuthenticatedRequest, 
 
     // Save JSON to datasets dir
     await mkdir(config.datasets.dir, { recursive: true });
-    const jsonPath = path.join(config.datasets.dir, `${datasetName}.json`);
+    const jsonPath = resolveContainedPath(config.datasets.dir, `${safeDatasetName}.json`, 'Dataset JSON path');
     await writeFile(jsonPath, JSON.stringify(dataset, null, 2), 'utf-8');
 
     // Now load into Gradio state via the existing endpoint
@@ -241,7 +278,7 @@ router.post('/build-dataset', authMiddleware, async (req: AuthenticatedRequest, 
           rawLyrics: samples[0].raw_lyrics,
         } : null,
         settings: {
-          datasetName,
+          datasetName: safeDatasetName,
           customTag,
           tagPosition,
           allInstrumental,
@@ -263,29 +300,22 @@ router.get('/audio', authMiddleware, async (req: AuthenticatedRequest, res: Resp
     const aceStepDir = getAceStepDir();
 
     if (req.query.path) {
-      filePath = req.query.path as string;
+      filePath = resolveContainedPath(aceStepDir, req.query.path as string, 'Audio path');
     } else if (req.query.file) {
       // Relative path within datasets dir
-      filePath = path.join(config.datasets.dir, req.query.file as string);
+      filePath = resolveContainedPath(config.datasets.dir, req.query.file as string, 'Audio file path');
     } else {
       res.status(400).json({ error: 'path or file parameter required' });
       return;
     }
 
-    // Path traversal protection
-    const resolved = path.resolve(filePath);
-    if (resolved.includes('..') || !resolved.startsWith(aceStepDir)) {
-      res.status(403).json({ error: 'Access denied: path outside ACE-Step directory' });
-      return;
-    }
-
-    if (!existsSync(resolved)) {
+    if (!existsSync(filePath)) {
       res.status(404).json({ error: 'Audio file not found' });
       return;
     }
 
     // Determine content type
-    const ext = path.extname(resolved).toLowerCase();
+    const ext = path.extname(filePath).toLowerCase();
     const mimeTypes: Record<string, string> = {
       '.wav': 'audio/wav',
       '.mp3': 'audio/mpeg',
@@ -295,7 +325,7 @@ router.get('/audio', authMiddleware, async (req: AuthenticatedRequest, res: Resp
     };
 
     res.setHeader('Content-Type', mimeTypes[ext] || 'application/octet-stream');
-    res.sendFile(resolved);
+    res.sendFile(filePath);
   } catch (error) {
     console.error('[Training] Audio proxy error:', error);
     res.status(500).json({ error: error instanceof Error ? error.message : 'Failed to serve audio' });
@@ -314,7 +344,8 @@ router.post('/preprocess', authMiddleware, async (req: AuthenticatedRequest, res
     const aceStepDir = getAceStepDir();
     const scriptPath = path.resolve(__dirname, '../../scripts/preprocess_dataset.py');
     const pythonPath = resolvePythonPath(aceStepDir);
-    const resolvedOutput = outputDir || path.join(config.datasets.dir, 'preprocessed_tensors');
+    const resolvedDatasetPath = resolveDatasetScopedPath(datasetPath, 'datasetPath');
+    const resolvedOutput = resolveDatasetScopedPath(outputDir || './datasets/preprocessed_tensors', 'outputDir');
 
     // Ensure output dir exists
     await mkdir(resolvedOutput, { recursive: true });
@@ -322,7 +353,7 @@ router.post('/preprocess', authMiddleware, async (req: AuthenticatedRequest, res
     // Spawn Python process
     const child = spawn(pythonPath, [
       scriptPath,
-      '--dataset', datasetPath,
+      '--dataset', resolvedDatasetPath,
       '--output', resolvedOutput,
       '--json',
     ], {
@@ -380,11 +411,8 @@ router.post('/scan-directory', authMiddleware, async (req: AuthenticatedRequest,
       return;
     }
 
-    // Resolve path — if relative, resolve from ACE-Step dir
     const aceStepDir = getAceStepDir();
-    const resolvedDir = path.isAbsolute(audioDir)
-      ? audioDir
-      : path.resolve(aceStepDir, audioDir);
+    const resolvedDir = resolveContainedPath(aceStepDir, audioDir, 'audioDir');
 
     if (!existsSync(resolvedDir)) {
       res.status(400).json({ error: `Directory not found: ${audioDir}` });
@@ -494,15 +522,20 @@ router.post('/init-model', authMiddleware, async (req: AuthenticatedRequest, res
       quantization = false,
     } = req.body;
 
+    const aceStepDir = getAceStepDir();
+    const resolvedCheckpoint = checkpoint ? resolveContainedPath(aceStepDir, checkpoint, 'checkpoint') : '';
+    const resolvedConfigPath = configPath ? resolveContainedPath(aceStepDir, configPath, 'configPath') : '';
+    const resolvedLmModelPath = lmModelPath ? resolveContainedPath(aceStepDir, lmModelPath, 'lmModelPath') : '';
+
     const client = await getGradioClient();
     try {
       // Try calling by function name (may work if Gradio auto-names it)
       const result = await client.predict('/init_service_wrapper', [
-        checkpoint ?? '',
-        configPath ?? '',
+        resolvedCheckpoint,
+        resolvedConfigPath,
         device,
         initLlm,
-        lmModelPath,
+        resolvedLmModelPath,
         backend,
         useFlashAttention,
         offloadToCpu,
@@ -562,9 +595,7 @@ router.get('/lora-checkpoints', authMiddleware, async (req: AuthenticatedRequest
   try {
     const outputDir = (req.query.dir as string) || './lora_output';
     const aceStepDir = getAceStepDir();
-    const resolvedDir = path.isAbsolute(outputDir)
-      ? outputDir
-      : path.resolve(aceStepDir, outputDir);
+    const resolvedDir = resolveContainedPath(aceStepDir, outputDir, 'outputDir');
 
     if (!existsSync(resolvedDir)) {
       res.json({ checkpoints: [] });
@@ -607,14 +638,10 @@ router.post('/load-dataset', authMiddleware, async (req: AuthenticatedRequest, r
       res.status(400).json({ error: 'datasetPath is required' });
       return;
     }
-    // Reject path traversal
-    if (datasetPath.includes('..')) {
-      res.status(400).json({ error: 'Invalid path' });
-      return;
-    }
+    const resolvedDatasetPath = resolveDatasetScopedPath(datasetPath.trim(), 'datasetPath');
 
     const client = await getGradioClient();
-    const result = await client.predict('/load_existing_dataset_for_preprocess', [datasetPath]);
+    const result = await client.predict('/load_existing_dataset_for_preprocess', [resolvedDatasetPath]);
     const data = result.data as unknown[];
 
     // Returns: [status, dataframe, sampleIdx, audioPreview, filename, caption, genre,
@@ -726,14 +753,17 @@ router.post('/update-settings', authMiddleware, (_req: AuthenticatedRequest, res
 router.post('/save-dataset', authMiddleware, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const { savePath, datasetName, customTag, tagPosition, allInstrumental, genreRatio } = req.body;
-
-    const resolvedPath = (savePath ?? `./datasets/${datasetName ?? 'my_lora_dataset'}.json`).trim();
+    const safeDatasetName = validateDatasetName(datasetName, 'my_lora_dataset');
+    const resolvedPath = resolveDatasetScopedPath(
+      (savePath ?? `./datasets/${safeDatasetName}.json`).trim(),
+      'savePath'
+    );
 
     // Use REST API to avoid @gradio/client Radio serialization issues
     const apiUrl = config.acestep.apiUrl;
     const body: Record<string, unknown> = {
       save_path: resolvedPath,
-      dataset_name: datasetName ?? 'my_lora_dataset',
+      dataset_name: safeDatasetName,
     };
     if (customTag !== undefined) body.custom_tag = customTag;
     if (tagPosition !== undefined) body.tag_position = tagPosition;
@@ -767,10 +797,12 @@ router.post('/save-dataset', authMiddleware, async (req: AuthenticatedRequest, r
 router.post('/load-tensors', authMiddleware, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const { tensorDir } = req.body;
+    const aceStepDir = getAceStepDir();
+    const resolvedTensorDir = resolveDatasetScopedPath(tensorDir ?? './datasets/preprocessed_tensors', 'tensorDir');
 
     const client = await getGradioClient();
     const result = await client.predict('/load_training_dataset', [
-      tensorDir ?? './datasets/preprocessed_tensors',
+      resolvedTensorDir,
     ]);
     const data = result.data as unknown[];
 
@@ -790,9 +822,16 @@ router.post('/start', authMiddleware, async (req: AuthenticatedRequest, res: Res
       shift, seed, outputDir, resumeCheckpoint,
     } = req.body;
 
+    const aceStepDir = getAceStepDir();
+    const resolvedTensorDir = resolveDatasetScopedPath(tensorDir ?? './datasets/preprocessed_tensors', 'tensorDir');
+    const resolvedOutputDir = resolveContainedPath(aceStepDir, outputDir ?? './lora_output', 'outputDir');
+    const resolvedResumeCheckpoint = resumeCheckpoint
+      ? resolveContainedPath(aceStepDir, resumeCheckpoint, 'resumeCheckpoint')
+      : null;
+
     const client = await getGradioClient();
     const result = await client.predict('/training_wrapper', [
-      tensorDir ?? './datasets/preprocessed_tensors',
+      resolvedTensorDir,
       rank ?? 64,
       alpha ?? 128,
       dropout ?? 0.1,
@@ -803,8 +842,8 @@ router.post('/start', authMiddleware, async (req: AuthenticatedRequest, res: Res
       saveEvery ?? 200,
       shift ?? 3.0,
       seed ?? 42,
-      outputDir ?? './lora_output',
-      resumeCheckpoint ?? null,
+      resolvedOutputDir,
+      resolvedResumeCheckpoint,
     ]);
     const data = result.data as unknown[];
 
@@ -838,11 +877,14 @@ router.post('/stop', authMiddleware, async (_req: AuthenticatedRequest, res: Res
 router.post('/export', authMiddleware, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const { exportPath, loraOutputDir } = req.body;
+    const aceStepDir = getAceStepDir();
+    const resolvedExportPath = resolveContainedPath(aceStepDir, exportPath ?? './lora_output/final_lora', 'exportPath');
+    const resolvedLoraOutputDir = resolveContainedPath(aceStepDir, loraOutputDir ?? './lora_output', 'loraOutputDir');
 
     const client = await getGradioClient();
     const result = await client.predict('/export_lora', [
-      exportPath ?? './lora_output/final_lora',
-      loraOutputDir ?? './lora_output',
+      resolvedExportPath,
+      resolvedLoraOutputDir,
     ]);
     const data = result.data as unknown[];
 
