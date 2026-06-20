@@ -228,17 +228,30 @@ export const VideoGeneratorModal: React.FC<VideoGeneratorModalProps> = ({ isOpen
         }
       });
 
-      const baseURL = 'https://unpkg.com/@ffmpeg/core@0.12.6/dist/esm';
-      await ffmpeg.load({
-        coreURL: await toBlobURL(`${baseURL}/ffmpeg-core.js`, 'text/javascript'),
-        wasmURL: await toBlobURL(`${baseURL}/ffmpeg-core.wasm`, 'application/wasm'),
-      });
+      const cdnBases = [
+        'https://unpkg.com/@ffmpeg/core@0.12.6/dist/esm',
+        'https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.6/dist/esm',
+      ];
+      let loaded = false;
+      for (const baseURL of cdnBases) {
+        try {
+          await ffmpeg.load({
+            coreURL: await toBlobURL(`${baseURL}/ffmpeg-core.js`, 'text/javascript'),
+            wasmURL: await toBlobURL(`${baseURL}/ffmpeg-core.wasm`, 'application/wasm'),
+          });
+          loaded = true;
+          break;
+        } catch {
+          console.warn(`FFmpeg load failed from ${baseURL}, trying next CDN...`);
+        }
+      }
+      if (!loaded) throw new Error('All CDN sources failed');
 
       ffmpegRef.current = ffmpeg;
       setFfmpegLoaded(true);
     } catch (error) {
       console.error('Failed to load FFmpeg:', error);
-      alert('Failed to load video encoder. Please refresh and try again.');
+      alert('Failed to load video encoder. Check your internet connection and try again.');
     } finally {
       setFfmpegLoading(false);
     }

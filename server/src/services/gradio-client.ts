@@ -41,17 +41,26 @@ export function resetGradioClient(): void {
 
 /**
  * Check if the Gradio app is reachable.
+ * Tries multiple well-known endpoints to handle version differences.
  */
 export async function isGradioAvailable(): Promise<boolean> {
-  try {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 3000);
-    const response = await fetch(`${config.acestep.apiUrl}/gradio_api/info`, {
-      signal: controller.signal,
-    });
-    clearTimeout(timeout);
-    return response.ok;
-  } catch {
-    return false;
+  const baseUrl = config.acestep.apiUrl;
+  const candidates = [
+    `${baseUrl}/gradio_api/info`, // Gradio 5+
+    `${baseUrl}/info`,            // Gradio 4.x fallback
+    `${baseUrl}/`,                // Any HTTP response means server is up
+  ];
+
+  for (const url of candidates) {
+    try {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 5000);
+      const response = await fetch(url, { signal: controller.signal });
+      clearTimeout(timer);
+      if (response.ok || response.status < 500) return true;
+    } catch {
+      // Try next candidate
+    }
   }
+  return false;
 }

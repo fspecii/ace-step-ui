@@ -22,6 +22,30 @@ import { getStorageProvider } from '../services/storage/factory.js';
 
 const router = Router();
 
+// Auto-generate a song title from lyrics or style when none is provided
+function autoTitle(params: { title?: string; lyrics?: string; instrumental?: boolean; style?: string; songDescription?: string }): string {
+  if (params.title?.trim()) return params.title.trim();
+
+  // Try first meaningful lyric line (skip section markers like [verse], [chorus])
+  if (!params.instrumental && params.lyrics) {
+    for (const line of params.lyrics.split('\n')) {
+      const t = line.trim();
+      if (t && !/^\[.*\]$/.test(t)) {
+        return t.length > 40 ? t.slice(0, 40).trimEnd() + '…' : t;
+      }
+    }
+  }
+
+  // Fall back to first 4 words of style or description
+  const source = params.style || params.songDescription || '';
+  if (source) {
+    const words = source.trim().split(/\s+/).slice(0, 4).join(' ');
+    return words.charAt(0).toUpperCase() + words.slice(1);
+  }
+
+  return 'Untitled';
+}
+
 const audioUpload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 25 * 1024 * 1024 }, // 25MB max
@@ -125,6 +149,9 @@ interface GenerateBody {
   trackName?: string;
   completeTrackClasses?: string[];
   isFormatCaption?: boolean;
+
+  // Model selection
+  ditModel?: string;
 }
 
 router.post('/upload-audio', authMiddleware, (req: AuthenticatedRequest, res: Response, next: Function) => {
@@ -237,6 +264,7 @@ router.post('/', authMiddleware, async (req: AuthenticatedRequest, res: Response
       trackName,
       completeTrackClasses,
       isFormatCaption,
+      ditModel,
     } = req.body as GenerateBody;
 
     if (!customMode && !songDescription) {
@@ -304,6 +332,7 @@ router.post('/', authMiddleware, async (req: AuthenticatedRequest, res: Response
       trackName,
       completeTrackClasses,
       isFormatCaption,
+      ditModel,
     };
 
     // Create job record in database
@@ -392,7 +421,7 @@ router.get('/status/:jobId', authMiddleware, async (req: AuthenticatedRequest, r
             for (let i = 0; i < audioUrls.length; i++) {
               const audioUrl = audioUrls[i];
               const variationSuffix = audioUrls.length > 1 ? ` (v${i + 1})` : '';
-              const songTitle = (params.title || 'Untitled') + variationSuffix;
+              const songTitle = autoTitle(params) + variationSuffix;
 
               const songId = generateUUID();
 
@@ -416,7 +445,7 @@ router.get('/status/:jobId', authMiddleware, async (req: AuthenticatedRequest, r
                     params.style,
                     params.style,
                     storedPath,
-                    aceStatus.result.duration && aceStatus.result.duration > 0 ? aceStatus.result.duration : (params.duration && params.duration > 0 ? params.duration : 120),
+                    aceStatus.result.duration && aceStatus.result.duration > 0 ? aceStatus.result.duration : (params.duration && params.duration > 0 ? params.duration : 0),
                     aceStatus.result.bpm || params.bpm,
                     aceStatus.result.keyScale || params.keyScale,
                     aceStatus.result.timeSignature || params.timeSignature,
@@ -442,7 +471,7 @@ router.get('/status/:jobId', authMiddleware, async (req: AuthenticatedRequest, r
                     params.style,
                     params.style,
                     audioUrl,
-                    aceStatus.result.duration && aceStatus.result.duration > 0 ? aceStatus.result.duration : (params.duration && params.duration > 0 ? params.duration : 120),
+                    aceStatus.result.duration && aceStatus.result.duration > 0 ? aceStatus.result.duration : (params.duration && params.duration > 0 ? params.duration : 0),
                     aceStatus.result.bpm || params.bpm,
                     aceStatus.result.keyScale || params.keyScale,
                     aceStatus.result.timeSignature || params.timeSignature,
@@ -667,9 +696,9 @@ router.get('/random-description', authMiddleware, async (_req: AuthenticatedRequ
 router.get('/health', async (_req, res: Response) => {
   try {
     const healthy = await checkSpaceHealth();
-    res.json({ healthy });
+    res.json({ healthy, aceStepUrl: config.acestep.apiUrl });
   } catch (error) {
-    res.json({ healthy: false, error: (error as Error).message });
+    res.json({ healthy: false, aceStepUrl: config.acestep.apiUrl, error: (error as Error).message });
   }
 });
 
@@ -750,8 +779,63 @@ router.post('/format', authMiddleware, async (req: AuthenticatedRequest, res: Re
       return;
     }
 
-    const { spawn } = await import('child_process');
+    const ACESTEP_API_URL = config.acestep.apiUrl;
 
+    // Build param_obj for the REST API
+    const paramObj: Record<string, unknown> = {};
+    if (bpm && bpm > 0) paramObj.bpm = bpm;
+    if (duration && duration > 0) paramObj.duration = duration;
+    if (keyScale) paramObj.key = keyScale;
+    if (timeSignature) paramObj.time_signature = timeSignature;
+
+    // Primary path: call ACE-Step's /format_input REST endpoint (avoids Python spawn ENOENT on Windows)
+    try {
+      console.log(`[Format] Calling REST API: ${ACESTEP_API_URL}/format_input`);
+      const apiRes = await fetch(`${ACESTEP_API_URL}/format_input`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          prompt: caption,
+          lyrics: lyrics || '',
+          temperature: temperature ?? 0.85,
+          param_obj: paramObj,
+        }),
+        signal: AbortSignal.timeout(300_000), // 5 min — LLM may need to init first
+      });
+
+      const apiData = await apiRes.json() as any;
+
+      if (!apiRes.ok || apiData.code !== 200) {
+        const errMsg = apiData.error || apiData.detail || `Format API returned ${apiRes.status}`;
+        console.error('[Format] API error:', errMsg);
+        res.status(500).json({ success: false, error: errMsg });
+        return;
+      }
+
+      const d = apiData.data;
+      res.json({
+        caption: d.caption,
+        lyrics: d.lyrics,
+        bpm: d.bpm,
+        duration: d.duration,
+        key_scale: d.key_scale,
+        time_signature: d.time_signature,
+        vocal_language: d.vocal_language,
+      });
+      return;
+    } catch (fetchErr: any) {
+      // Only fall back to Python spawn on network errors (service not yet reachable)
+      if (fetchErr?.name !== 'AbortError' && (fetchErr?.code === 'ECONNREFUSED' || fetchErr?.cause?.code === 'ECONNREFUSED')) {
+        console.warn('[Format] REST API unreachable, falling back to Python spawn');
+      } else {
+        console.error('[Format] REST API request failed:', fetchErr?.message);
+        res.status(500).json({ success: false, error: fetchErr?.message || 'Format request failed' });
+        return;
+      }
+    }
+
+    // Fallback: Python spawn (only reached when REST API is unreachable)
+    const { spawn } = await import('child_process');
     const ACESTEP_DIR = process.env.ACESTEP_PATH || path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../../ACE-Step-1.5');
     const __filename = fileURLToPath(import.meta.url);
     const __dirname = path.dirname(__filename);
@@ -759,12 +843,7 @@ router.post('/format', authMiddleware, async (req: AuthenticatedRequest, res: Re
     const FORMAT_SCRIPT = path.join(SCRIPTS_DIR, 'format_sample.py');
     const pythonPath = resolvePythonPath(ACESTEP_DIR);
 
-    const args = [
-      FORMAT_SCRIPT,
-      '--caption', caption,
-      '--json',
-    ];
-
+    const args = [FORMAT_SCRIPT, '--caption', caption, '--json'];
     if (lyrics) args.push('--lyrics', lyrics);
     if (bpm && bpm > 0) args.push('--bpm', String(bpm));
     if (duration && duration > 0) args.push('--duration', String(duration));
@@ -776,15 +855,11 @@ router.post('/format', authMiddleware, async (req: AuthenticatedRequest, res: Re
     if (lmModel) args.push('--lm-model', lmModel);
     if (lmBackend) args.push('--lm-backend', lmBackend);
 
-    console.log(`[Format] Running: ${pythonPath} ${args.join(' ')}`);
-    console.log(`[Format] CWD: ${ACESTEP_DIR}`);
+    console.log(`[Format] Fallback spawn: ${pythonPath} ${args.join(' ')}`);
     const result = await new Promise<{ success: boolean; data?: any; error?: string }>((resolve) => {
       const proc = spawn(pythonPath, args, {
         cwd: ACESTEP_DIR,
-        env: {
-          ...process.env,
-          ACESTEP_PATH: ACESTEP_DIR,
-        },
+        env: { ...process.env, ACESTEP_PATH: ACESTEP_DIR },
       });
 
       let stdout = '';
@@ -795,7 +870,6 @@ router.post('/format', authMiddleware, async (req: AuthenticatedRequest, res: Re
 
       proc.on('close', (code) => {
         if (code === 0 && stdout) {
-          // stdout may contain log lines before the JSON — extract last JSON line
           const lines = stdout.trim().split('\n');
           let jsonStr = '';
           for (let i = lines.length - 1; i >= 0; i--) {

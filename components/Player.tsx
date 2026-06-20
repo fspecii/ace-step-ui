@@ -69,6 +69,7 @@ export const Player: React.FC<PlayerProps> = ({
     const progressBarRef = useRef<HTMLDivElement>(null);
     const fullscreenProgressRef = useRef<HTMLDivElement>(null);
     const [isHoveringVolume, setIsHoveringVolume] = useState(false);
+    const volumeHideTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
     const [showDropdown, setShowDropdown] = useState(false);
     const [isFullscreen, setIsFullscreen] = useState(false);
     const [shareModalOpen, setShareModalOpen] = useState(false);
@@ -755,8 +756,13 @@ export const Player: React.FC<PlayerProps> = ({
                     {/* Volume Control with Vertical Slider */}
                     <div
                         className="relative group hidden md:block"
-                        onMouseEnter={() => setIsHoveringVolume(true)}
-                        onMouseLeave={() => setIsHoveringVolume(false)}
+                        onMouseEnter={() => {
+                            if (volumeHideTimer.current) clearTimeout(volumeHideTimer.current);
+                            setIsHoveringVolume(true);
+                        }}
+                        onMouseLeave={() => {
+                            volumeHideTimer.current = setTimeout(() => setIsHoveringVolume(false), 400);
+                        }}
                     >
                         <button
                             onClick={() => onVolumeChange(volume === 0 ? 0.8 : 0)}

@@ -474,6 +474,10 @@ export const TrainingPanel: React.FC = () => {
       const result = await trainingApi.saveDataset({
         savePath: savePath || `./datasets/${datasetSettings.datasetName}.json`,
         datasetName: datasetSettings.datasetName,
+        customTag: datasetSettings.customTag,
+        tagPosition: datasetSettings.tagPosition,
+        allInstrumental: datasetSettings.allInstrumental,
+        genreRatio: datasetSettings.genreRatio,
       }, token);
       setSaveStatus(result.status as string);
       if (result.path) setSavePath(result.path);

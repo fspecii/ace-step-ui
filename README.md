@@ -490,6 +490,28 @@ This is a community-driven project and contributions are what make open source a
 
 ---
 
+## 💼 Need a Website Like This?
+
+If you like the engineering and design behind ACE-Step UI and want something similar built for your business, the same team offers professional web development services.
+
+**We build:**
+- 🌐 Custom websites & web apps — Next.js, Astro, WordPress, React
+- 🤖 AI integrations & automations — OpenAI, Anthropic, custom LLM workflows
+- 📱 Mobile apps — iOS, Android, React Native
+- 🎨 UI/UX design tailored to your brand
+
+<p align="center">
+  <a href="https://websitefirma.ro">
+    <img src="https://img.shields.io/badge/Get_in_Touch-websitefirma.ro-d4ff00?style=for-the-badge&labelColor=000000" alt="websitefirma.ro">
+  </a>
+</p>
+
+<p align="center">
+  <em>From the makers of ACE-Step UI — we ship production-grade web experiences.</em>
+</p>
+
+---
+
 ## 🙏 Credits
 
 - **[ACE-Step](https://github.com/ace-step/ACE-Step-1.5)** - The revolutionary open source AI music generation model

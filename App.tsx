@@ -716,17 +716,21 @@ function AppContent() {
           ? (Number(status.progress) > 1 ? Number(status.progress) / 100 : Number(status.progress))
           : undefined;
 
-        setSongs(prev => prev.map(s => {
-          if (s.id === tempId) {
-            return {
-              ...s,
-              queuePosition: status.status === 'queued' ? status.queuePosition : undefined,
-              progress: normalizedProgress ?? s.progress,
-              stage: status.stage ?? s.stage,
-            };
+        setSongs(prev => {
+          const song = prev.find(s => s.id === tempId);
+          if (!song) return prev;
+          const newQueuePos = status.status === 'queued' ? status.queuePosition : undefined;
+          const newProgress = normalizedProgress ?? song.progress;
+          const newStage = status.stage ?? song.stage;
+          // Skip update if nothing changed to avoid unnecessary re-renders
+          if (newProgress === song.progress && newStage === song.stage && newQueuePos === song.queuePosition) {
+            return prev;
           }
-          return s;
-        }));
+          return prev.map(s => {
+            if (s.id !== tempId) return s;
+            return { ...s, queuePosition: newQueuePos, progress: newProgress, stage: newStage };
+          });
+        });
 
         if (status.status === 'succeeded' && status.result) {
           cleanupJob(jobId, tempId);

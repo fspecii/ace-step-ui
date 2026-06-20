@@ -768,6 +768,10 @@ export const trainingApi = {
   saveDataset: (params: {
     savePath?: string;
     datasetName?: string;
+    customTag?: string;
+    tagPosition?: string;
+    allInstrumental?: boolean;
+    genreRatio?: number;
   }, token: string): Promise<{ status: string; path: string }> =>
     api('/api/training/save-dataset', { method: 'POST', body: params, token }),
 

@@ -717,41 +717,45 @@ router.post('/save-sample', authMiddleware, async (req: AuthenticatedRequest, re
 });
 
 // POST /api/training/update-settings — Update dataset global settings
-router.post('/update-settings', authMiddleware, async (req: AuthenticatedRequest, res: Response) => {
-  try {
-    const { customTag, tagPosition, allInstrumental, genreRatio } = req.body;
-
-    const client = await getGradioClient();
-    await client.predict('/update_settings', [
-      customTag ?? '',
-      tagPosition ?? 'replace',
-      allInstrumental ?? true,
-      genreRatio ?? 0,
-    ]);
-
-    res.json({ success: true });
-  } catch (error) {
-    console.error('[Training] Update settings error:', error);
-    res.status(500).json({ error: error instanceof Error ? error.message : 'Failed to update settings' });
-  }
+// Settings are applied directly when saving (via REST API), so no Gradio call needed here.
+router.post('/update-settings', authMiddleware, (_req: AuthenticatedRequest, res: Response) => {
+  res.json({ success: true });
 });
 
 // POST /api/training/save-dataset — Save the dataset to a JSON file
 router.post('/save-dataset', authMiddleware, async (req: AuthenticatedRequest, res: Response) => {
   try {
-    const { savePath, datasetName } = req.body;
+    const { savePath, datasetName, customTag, tagPosition, allInstrumental, genreRatio } = req.body;
 
-    const client = await getGradioClient();
-    const result = await client.predict('/save_dataset', [
-      savePath ?? './datasets/my_lora_dataset.json',
-      datasetName ?? 'my_lora_dataset',
-    ]);
-    const data = result.data as unknown[];
+    const resolvedPath = (savePath ?? `./datasets/${datasetName ?? 'my_lora_dataset'}.json`).trim();
 
-    // Returns: [saveStatus, savePath]
+    // Use REST API to avoid @gradio/client Radio serialization issues
+    const apiUrl = config.acestep.apiUrl;
+    const body: Record<string, unknown> = {
+      save_path: resolvedPath,
+      dataset_name: datasetName ?? 'my_lora_dataset',
+    };
+    if (customTag !== undefined) body.custom_tag = customTag;
+    if (tagPosition !== undefined) body.tag_position = tagPosition;
+    if (allInstrumental !== undefined) body.all_instrumental = allInstrumental;
+    if (genreRatio !== undefined) body.genre_ratio = genreRatio;
+
+    const apiRes = await fetch(`${apiUrl}/v1/dataset/save`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(30_000),
+    });
+
+    if (!apiRes.ok) {
+      const err = await apiRes.json().catch(() => ({})) as any;
+      throw new Error(err?.detail || err?.error || `Save failed: ${apiRes.status}`);
+    }
+
+    const data = await apiRes.json() as any;
     res.json({
-      status: data[0],
-      path: data[1],
+      status: data.status ?? 'Saved',
+      path: data.save_path ?? resolvedPath,
     });
   } catch (error) {
     console.error('[Training] Save dataset error:', error);

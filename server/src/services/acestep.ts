@@ -77,7 +77,7 @@ const SCRIPTS_DIR = path.join(__dirname, '../../scripts');
 const PYTHON_SCRIPT = path.join(SCRIPTS_DIR, 'simple_generate.py');
 
 // ---------------------------------------------------------------------------
-// Gradio generation: map params to the 45 positional args for /generation_wrapper
+// Gradio generation: map params to the 51 positional args for /generation_wrapper
 // ---------------------------------------------------------------------------
 
 /**
@@ -141,6 +141,12 @@ async function buildGradioArgs(params: GenerationParams): Promise<unknown[]> {
   const referenceAudio = await prepareAudioFile(params.referenceAudioUrl);
   const sourceAudio = await prepareAudioFile(params.sourceAudioUrl);
 
+  // Guard: cover/repaint modes require source audio to be loadable
+  const needsSource = params.taskType === 'cover' || params.taskType === 'audio2audio' || params.taskType === 'repaint';
+  if (needsSource && params.sourceAudioUrl && sourceAudio === null) {
+    throw new Error(`Source audio file could not be loaded from: ${params.sourceAudioUrl}. Make sure the file was uploaded successfully.`);
+  }
+
   // CoT features are gated by enhance OR thinking (either enables LLM enrichment)
   const useCot = isEnhance || isThinking;
 
@@ -163,38 +169,41 @@ async function buildGradioArgs(params: GenerationParams): Promise<unknown[]> {
     params.repaintingStart ?? 0.0,                                // 15: Repainting Start
     params.repaintingEnd ?? -1,                                   // 16: Repainting End
     params.instruction || 'Fill the audio semantic mask with the style described in the text prompt.', // 17: Instruction
-    params.audioCoverStrength ?? 1.0,                             // 18: LM Codes Strength
-    params.taskType || 'text2music',                              // 19: Task Type
-    params.useAdg ?? false,                                       // 20: Use ADG
-    params.cfgIntervalStart ?? 0.0,                               // 21: CFG Interval Start
-    params.cfgIntervalEnd ?? 1.0,                                 // 22: CFG Interval End
-    params.shift ?? 3.0,                                          // 23: Shift
-    params.inferMethod || 'ode',                                  // 24: Inference Method
-    params.customTimesteps || '',                                 // 25: Custom Timesteps
-    params.audioFormat || 'mp3',                                  // 26: Audio Format
-    params.lmTemperature ?? 0.85,                                 // 27: LM Temperature
-    isThinking,                                                   // 28: Think
-    params.lmCfgScale ?? 2.0,                                    // 29: LM CFG Scale
-    params.lmTopK ?? 0,                                           // 30: LM Top-K
-    params.lmTopP ?? 0.9,                                         // 31: LM Top-P
-    params.lmNegativePrompt || 'NO USER INPUT',                   // 32: LM Negative Prompt
-    useCot ? (params.useCotMetas ?? true) : false,                // 33: CoT Metas
-    useCot ? (params.useCotCaption ?? true) : false,              // 34: CaptionRewrite
-    useCot ? (params.useCotLanguage ?? true) : false,             // 35: CoT Language
-    params.isFormatCaption ?? false,                              // 36: Is Format Caption State
-    params.constrainedDecodingDebug ?? false,                     // 37: Constrained Decoding Debug
-    params.allowLmBatch ?? true,                                  // 38: ParallelThinking
-    params.getScores ?? false,                                    // 39: Auto Score
-    params.getLrc ?? false,                                       // 40: Auto LRC
-    params.scoreScale ?? 0.5,                                     // 41: Quality Score Sensitivity
-    params.lmBatchChunkSize ?? 8,                                 // 42: LM Batch Chunk Size
-    params.trackName || null,                                     // 43: Track Name
-    params.completeTrackClasses || [],                            // 44: Track Names
-    params.autogen ?? false,                                      // 45: AutoGen
-    0,                                                            // 46: Current Batch Index
-    1,                                                            // 47: Total Batches
-    [],                                                           // 48: Batch Queue
-    {},                                                           // 49: Generation Params State
+    params.audioCoverStrength ?? 1.0,                             // 18: Audio Cover Strength
+    0.0,                                                          // 19: Cover Noise Strength (ACE-Step v1.5 new param, default 0.0)
+    (params.taskType === 'audio2audio' ? 'cover' : params.taskType) || 'text2music', // 20: Task Type
+    params.useAdg ?? false,                                       // 21: Use ADG
+    params.cfgIntervalStart ?? 0.0,                               // 22: CFG Interval Start
+    params.cfgIntervalEnd ?? 1.0,                                 // 23: CFG Interval End
+    params.shift ?? 3.0,                                          // 24: Shift
+    params.inferMethod || 'ode',                                  // 25: Inference Method
+    params.customTimesteps || '',                                 // 26: Custom Timesteps
+    params.audioFormat || 'mp3',                                  // 27: Audio Format
+    params.lmTemperature ?? 0.85,                                 // 28: LM Temperature
+    isThinking,                                                   // 29: Think
+    params.lmCfgScale ?? 2.0,                                    // 30: LM CFG Scale
+    params.lmTopK ?? 0,                                           // 31: LM Top-K
+    params.lmTopP ?? 0.9,                                         // 32: LM Top-P
+    params.lmNegativePrompt || 'NO USER INPUT',                   // 33: LM Negative Prompt
+    useCot ? (params.useCotMetas ?? true) : false,                // 34: CoT Metas
+    useCot ? (params.useCotCaption ?? true) : false,              // 35: CaptionRewrite
+    useCot ? (params.useCotLanguage ?? true) : false,             // 36: CoT Language
+    params.isFormatCaption ?? false,                              // 37: Is Format Caption State
+    params.constrainedDecodingDebug ?? false,                     // 38: Constrained Decoding Debug
+    params.allowLmBatch ?? true,                                  // 39: ParallelThinking
+    params.getScores ?? false,                                    // 40: Auto Score
+    params.getLrc ?? false,                                       // 41: Auto LRC (timestamped lyrics)
+    params.scoreScale ?? 0.5,                                     // 42: Quality Score Sensitivity (0.01-1.0)
+    params.lmBatchChunkSize ?? 8,                                 // 43: LM Batch Chunk Size
+    params.trackName || null,                                     // 44: Track Name
+    params.completeTrackClasses || [],                            // 45: Track Names
+    true,                                                         // 46: Enable Normalization (ACE-Step v1.5, default true)
+    -1.0,                                                         // 47: Normalization DB (ACE-Step v1.5, default -1.0)
+    0.0,                                                          // 48: Latent Shift (ACE-Step v1.5, default 0.0)
+    1.0,                                                          // 49: Latent Rescale (ACE-Step v1.5, default 1.0)
+    params.autogen ?? false,                                      // 50: AutoGen
+    // Note: current_batch_index, total_batches, batch_queue, generation_params_state
+    // are hidden Gradio state variables and must NOT be passed via client.predict()
   ];
 }
 
@@ -362,6 +371,40 @@ export async function checkSpaceHealth(): Promise<boolean> {
   return isGradioAvailable();
 }
 
+// ---------------------------------------------------------------------------
+// Model switching — call /v1/init to change the active DiT model
+// ---------------------------------------------------------------------------
+
+async function getActiveModel(): Promise<string | null> {
+  try {
+    const res = await fetch(`${ACESTEP_API}/v1/models`);
+    if (!res.ok) return null;
+    const data = await res.json() as any;
+    const models = data?.data?.models || data?.models || [];
+    return models[0]?.name || null;
+  } catch {
+    return null;
+  }
+}
+
+async function switchModelIfNeeded(ditModel: string): Promise<void> {
+  const activeModel = await getActiveModel();
+  if (activeModel === ditModel) return; // already loaded, no-op
+
+  console.log(`[Model] Switching from '${activeModel ?? 'unknown'}' to '${ditModel}'`);
+  const res = await fetch(`${ACESTEP_API}/v1/init`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ model: ditModel, init_llm: false }),
+  });
+
+  if (!res.ok) {
+    const err = await res.text().catch(() => '');
+    throw new Error(`Model switch to '${ditModel}' failed: ${res.status} ${err}`);
+  }
+  console.log(`[Model] Switched to '${ditModel}'`);
+}
+
 // Discover endpoints (for compatibility)
 export async function discoverEndpoints(): Promise<unknown> {
   return { provider: 'acestep-gradio', endpoint: ACESTEP_API };
@@ -469,6 +512,12 @@ async function processGenerationViaGradio(
   params: GenerationParams,
   job: ActiveJob,
 ): Promise<void> {
+  // Switch DiT model if a specific one was requested
+  if (params.ditModel) {
+    job.stage = `Loading model ${params.ditModel}...`;
+    await switchModelIfNeeded(params.ditModel);
+  }
+
   const client = await getGradioClient();
   const args = await buildGradioArgs(params);
 
@@ -549,7 +598,7 @@ async function processGenerationViaGradio(
 
   const finalDuration = actualDuration > 0
     ? actualDuration
-    : (metas.duration || params.duration || 60);
+    : (metas.duration || params.duration || 0);
 
   job.status = 'succeeded';
   job.result = {
@@ -714,7 +763,8 @@ async function processGenerationViaPython(
     if (params.vocalLanguage) args.push('--vocal-language', params.vocalLanguage);
     if (params.seed !== undefined && params.seed >= 0 && !params.randomSeed) args.push('--seed', String(params.seed));
     if (params.shift !== undefined) args.push('--shift', String(params.shift));
-    if (params.taskType && params.taskType !== 'text2music') args.push('--task-type', params.taskType);
+    const resolvedTaskType = params.taskType === 'audio2audio' ? 'cover' : params.taskType;
+    if (resolvedTaskType && resolvedTaskType !== 'text2music') args.push('--task-type', resolvedTaskType);
 
     if (params.referenceAudioUrl) {
       args.push('--reference-audio', resolveAudioPath(params.referenceAudioUrl));

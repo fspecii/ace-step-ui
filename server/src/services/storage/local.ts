@@ -22,14 +22,13 @@ export class LocalStorageProvider implements StorageProvider {
   }
 
   async getUrl(key: string, _expiresIn?: number): Promise<string> {
-    return `/audio/${key}`;
+    const cleanKey = key.startsWith('/audio/') ? key.slice('/audio/'.length) : key;
+    return `/audio/${cleanKey.replace(/^\/+/, '')}`;
   }
 
   getPublicUrl(key: string): string {
-    if (key.startsWith('/audio/')) {
-      return key;
-    }
-    return `/audio/${key}`;
+    const cleanKey = key.startsWith('/audio/') ? key.slice('/audio/'.length) : key;
+    return `/audio/${cleanKey.replace(/^\/+/, '')}`;
   }
 
   async delete(key: string): Promise<void> {
