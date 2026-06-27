@@ -40,15 +40,20 @@ export function resetGradioClient(): void {
 }
 
 /**
- * Check if the Gradio app is reachable.
- * Tries multiple well-known endpoints to handle version differences.
+ * Check if a real Gradio app is reachable.
+ *
+ * IMPORTANT: the local ACE-Step engine here is started as a REST API server
+ * (`acestep-api`), NOT a Gradio app. That server answers /gradio_api/info and
+ * /config with 404. We must therefore only treat the endpoint as Gradio when a
+ * Gradio-specific endpoint responds with a real success (response.ok). A 404
+ * means "not Gradio", so the backend correctly falls back to the local Python
+ * generation path (server/scripts/simple_generate.py).
  */
 export async function isGradioAvailable(): Promise<boolean> {
   const baseUrl = config.acestep.apiUrl;
   const candidates = [
     `${baseUrl}/gradio_api/info`, // Gradio 5+
     `${baseUrl}/info`,            // Gradio 4.x fallback
-    `${baseUrl}/`,                // Any HTTP response means server is up
   ];
 
   for (const url of candidates) {
@@ -57,7 +62,7 @@ export async function isGradioAvailable(): Promise<boolean> {
       const timer = setTimeout(() => controller.abort(), 5000);
       const response = await fetch(url, { signal: controller.signal });
       clearTimeout(timer);
-      if (response.ok || response.status < 500) return true;
+      if (response.ok) return true;
     } catch {
       // Try next candidate
     }

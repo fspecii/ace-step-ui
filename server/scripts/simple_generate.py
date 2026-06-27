@@ -25,8 +25,14 @@ from acestep.inference import GenerationParams, GenerationConfig, generate_music
 _handler = None
 _llm_handler = None
 
-def get_handlers():
+# Default DiT model. The CLI --config-path overrides this; otherwise the
+# ACESTEP_CONFIG_PATH env var is used; otherwise the bundled turbo model.
+DEFAULT_CONFIG_PATH = os.environ.get('ACESTEP_CONFIG_PATH', 'acestep-v15-turbo')
+
+def get_handlers(config_path=None):
     global _handler, _llm_handler
+    if config_path is None or config_path == "":
+        config_path = DEFAULT_CONFIG_PATH
     if _handler is None:
         if torch.cuda.is_available():
             device = "cuda"
@@ -34,10 +40,11 @@ def get_handlers():
             device = "mps"
         else:
             device = "cpu"
+        print(f"Loading DiT model: {config_path}", file=sys.stderr)
         _handler = AceStepHandler()
         _handler.initialize_service(
             project_root=ACESTEP_PATH,
-            config_path="acestep-v15-turbo",
+            config_path=config_path,
             device=device,
             offload_to_cpu=True,  # For 12GB GPU
         )
@@ -89,11 +96,14 @@ def generate(
     cfg_interval_start: float = 0.0,
     cfg_interval_end: float = 1.0,
 
+    # Model selection
+    config_path: str = None,
+
     # Output
     output_dir: str = None,
 ):
     """Generate music and return audio file paths."""
-    handler, llm_handler = get_handlers()
+    handler, llm_handler = get_handlers(config_path)
 
     if output_dir is None:
         output_dir = os.path.join(ACESTEP_PATH, "output")
@@ -190,6 +200,11 @@ def main():
     parser.add_argument("--audio-format", type=str, default="mp3", choices=["mp3", "flac", "wav"])
     parser.add_argument("--shift", type=float, default=3.0, help="Timestep shift factor")
 
+    # Model selection
+    parser.add_argument("--config-path", type=str, default=None,
+                        help="DiT model config/name (e.g. acestep-v15-xl-turbo). "
+                             "Falls back to ACESTEP_CONFIG_PATH env, then acestep-v15-turbo.")
+
     # Task type parameters
     parser.add_argument("--task-type", type=str, default="text2music",
                         choices=["text2music", "cover", "repaint", "lego", "extract", "complete"],
@@ -269,6 +284,9 @@ def main():
             use_adg=args.use_adg,
             cfg_interval_start=args.cfg_interval_start,
             cfg_interval_end=args.cfg_interval_end,
+
+            # Model
+            config_path=args.config_path,
 
             # Output
             output_dir=args.output_dir,

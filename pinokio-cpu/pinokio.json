@@ -1,0 +1,20 @@
+{
+  "title": "ACE-Step UI (CPU)",
+  "description": "CPU-only launcher for ACE-Step UI / ACE-Step 1.5 (no dedicated GPU required).",
+  "icon": "https://raw.githubusercontent.com/cocktailpeanut/ace-step-ui.pinokio/main/icon.jpeg",
+  "links": [
+    {
+      "title": "Project",
+      "links": [
+        {
+          "title": "ACE-Step UI (CPU fork)",
+          "value": "https://github.com/Landers125/ace-step-ui_CPU"
+        },
+        {
+          "title": "ACE-Step 1.5",
+          "value": "https://github.com/ace-step/ACE-Step-1.5"
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>ACE-Step — Music Generation Studio</title>
+<style>
+  :root{--bg:#0e0f13;--panel:#171922;--panel2:#1f2230;--acc:#7c5cff;--acc2:#36d6c3;--txt:#e8e9f0;--mut:#9aa0b4;--bd:#2a2e3e;--ok:#3ad29f;--err:#ff6b6b;}
+  *{box-sizing:border-box}
+  body{margin:0;background:linear-gradient(160deg,#0c0d11,#12131a);color:var(--txt);font:14px/1.5 -apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif}
+  header{padding:18px 24px;border-bottom:1px solid var(--bd);display:flex;align-items:center;gap:14px;position:sticky;top:0;background:rgba(14,15,19,.92);backdrop-filter:blur(8px);z-index:10}
+  header h1{font-size:18px;margin:0;font-weight:650}
+  header .dot{width:11px;height:11px;border-radius:50%;background:var(--acc);box-shadow:0 0 12px var(--acc)}
+  .wrap{max-width:1180px;margin:0 auto;padding:22px;display:grid;grid-template-columns:1.4fr .9fr;gap:22px}
+  @media(max-width:920px){.wrap{grid-template-columns:1fr}}
+  .card{background:var(--panel);border:1px solid var(--bd);border-radius:14px;padding:18px;margin-bottom:18px}
+  .card h2{font-size:13px;text-transform:uppercase;letter-spacing:.08em;color:var(--mut);margin:0 0 14px}
+  .grp{margin-bottom:10px;border:1px solid var(--bd);border-radius:10px;overflow:hidden}
+  .grp>summary{cursor:pointer;padding:11px 14px;background:var(--panel2);font-weight:600;list-style:none;display:flex;justify-content:space-between;align-items:center}
+  .grp>summary::-webkit-details-marker{display:none}
+  .grp>summary::after{content:"▾";color:var(--mut)}
+  .grp[open]>summary::after{content:"▴"}
+  .grp .body{padding:14px;display:grid;grid-template-columns:1fr 1fr;gap:12px}
+  @media(max-width:560px){.grp .body{grid-template-columns:1fr}}
+  .f{display:flex;flex-direction:column;gap:4px}
+  .f.full{grid-column:1/-1}
+  .f label{font-size:12px;color:var(--mut);font-weight:600}
+  .f .hint{font-size:11px;color:#6f7488}
+  input,select,textarea{background:#0d0e13;border:1px solid var(--bd);color:var(--txt);border-radius:8px;padding:8px 10px;font:inherit;width:100%}
+  textarea{min-height:64px;resize:vertical}
+  input:focus,select:focus,textarea:focus{outline:none;border-color:var(--acc)}
+  .chk{flex-direction:row;align-items:center;gap:8px}
+  .chk input{width:auto}
+  .btn{background:linear-gradient(135deg,var(--acc),#5b7cff);border:0;color:#fff;font-weight:650;padding:12px 18px;border-radius:10px;cursor:pointer;font-size:15px}
+  .btn:disabled{opacity:.5;cursor:not-allowed}
+  .btn.sec{background:var(--panel2);border:1px solid var(--bd)}
+  .row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+  .conn{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+  .status{font-size:13px;padding:8px 12px;border-radius:8px;background:var(--panel2);border:1px solid var(--bd)}
+  .status.ok{color:var(--ok)} .status.err{color:var(--err);border-color:var(--err)}
+  .res{border:1px solid var(--bd);border-radius:10px;padding:12px;margin-bottom:12px;background:var(--panel2)}
+  .res audio{width:100%;margin-top:8px}
+  .res .meta{font-size:12px;color:var(--mut);margin-top:6px;word-break:break-all}
+  a{color:var(--acc2)}
+  pre{background:#0d0e13;border:1px solid var(--bd);border-radius:8px;padding:12px;overflow:auto;font-size:12px}
+  .spin{display:inline-block;width:14px;height:14px;border:2px solid var(--mut);border-top-color:var(--acc);border-radius:50%;animation:s .8s linear infinite;vertical-align:-2px}
+  @keyframes s{to{transform:rotate(360deg)}}
+</style>
+</head>
+<body>
+<header><span class="dot"></span><h1>ACE-Step · Music Generation Studio</h1><span style="color:var(--mut);font-size:12px">all parameters</span></header>
+<div class="wrap">
+  <div>
+    <div class="card">
+      <h2>Connection</h2>
+      <div class="conn">
+        <div class="f"><label>Base URL</label><input id="base_url" placeholder="http://localhost:8001"/><span class="hint">Self-hosted ACE-Step server or your acemusic.ai gateway</span></div>
+        <div class="f"><label>API key</label><input id="api_key" type="password" placeholder="ai_token / Bearer"/><span class="hint">Stored only in this browser (localStorage)</span></div>
+      </div>
+      <div class="row" style="margin-top:12px">
+        <button class="btn sec" id="btnModels">List models</button>
+        <span id="modelsOut" class="hint"></span>
+      </div>
+    </div>
+    <div class="card">
+      <h2>Parameters</h2>
+      <div id="groups"></div>
+    </div>
+    <div class="card">
+      <h2>Request preview</h2>
+      <pre id="preview">{}</pre>
+    </div>
+  </div>
+  <div>
+    <div class="card" style="position:sticky;top:78px">
+      <h2>Generate</h2>
+      <div class="row">
+        <button class="btn" id="btnGen">▶ Generate</button>
+        <button class="btn sec" id="btnReset">Reset</button>
+      </div>
+      <div id="statusBox" class="status" style="margin-top:14px;display:none"></div>
+      <div id="results" style="margin-top:14px"></div>
+    </div>
+  </div>
+</div>
+<script>
+const $=s=>document.querySelector(s);
+let SCHEMA=[];
+let pollTimer=null;
+
+function conn(){return{base_url:$("#base_url").value.trim(),api_key:$("#api_key").value.trim()};}
+
+function fieldHtml(p){
+  const id="p_"+p.name;
+  const hint=p.help?`<span class="hint">${p.help}</span>`:"";
+  if(p.type==="bool"){
+    return `<div class="f chk"><input type="checkbox" id="${id}" ${p.default?"checked":""}/><label for="${id}">${p.name}</label>${hint}</div>`;
+  }
+  if(p.type==="textarea"){
+    return `<div class="f full"><label>${p.name}</label><textarea id="${id}">${p.default??""}</textarea>${hint}</div>`;
+  }
+  if(p.type==="select"){
+    const opts=p.choices.map(c=>`<option value="${c}" ${String(p.default)===String(c)?"selected":""}>${c||"(default)"}</option>`).join("");
+    return `<div class="f"><label>${p.name}</label><select id="${id}">${opts}</select>${hint}</div>`;
+  }
+  const t=(p.type==="int"||p.type==="float")?"number":"text";
+  const step=p.type==="float"?' step="any"':"";
+  const mn=p.min!==undefined?` min="${p.min}"`:"";const mx=p.max!==undefined?` max="${p.max}"`:"";
+  return `<div class="f"><label>${p.name}</label><input type="${t}"${step}${mn}${mx} id="${id}" value="${p.default??""}"/>${hint}</div>`;
+}
+
+function render(){
+  const groups={};
+  SCHEMA.forEach(p=>{(groups[p.group]=groups[p.group]||[]).push(p);});
+  const open=["Content","Music attributes","Generation control"];
+  $("#groups").innerHTML=Object.entries(groups).map(([g,ps])=>`
+    <details class="grp" ${open.includes(g)?"open":""}>
+      <summary>${g}</summary>
+      <div class="body">${ps.map(fieldHtml).join("")}</div>
+    </details>`).join("");
+  $("#groups").addEventListener("input",updatePreview);
+  updatePreview();
+}
+
+function collect(){
+  const out={};
+  SCHEMA.forEach(p=>{
+    const el=$("#p_"+p.name);if(!el)return;
+    let v;
+    if(p.type==="bool")v=el.checked;
+    else v=el.value;
+    if(p.type==="bool"){if(v!==p.default)out[p.name]=v;}
+    else if(v!==""&&v!==null){out[p.name]=v;}
+  });
+  return out;
+}
+
+function updatePreview(){$("#preview").textContent=JSON.stringify(collect(),null,2);}
+
+function setStatus(msg,cls){const b=$("#statusBox");b.style.display="block";b.className="status "+(cls||"");b.innerHTML=msg;}
+
+async function listModels(){
+  const c=conn();
+  $("#modelsOut").textContent="loading…";
+  try{
+    const r=await fetch(`/api/models?base_url=${encodeURIComponent(c.base_url)}&api_key=${encodeURIComponent(c.api_key)}`);
+    const j=await r.json();
+    const names=(j.data&&j.data.models||[]).map(m=>m.name+(m.is_default?" ★":"")).join(", ");
+    $("#modelsOut").textContent=names||JSON.stringify(j);
+  }catch(e){$("#modelsOut").textContent="error: "+e;}
+}
+
+async function generate(){
+  const c=conn();
+  const payload=Object.assign({},collect(),c);
+  $("#btnGen").disabled=true;$("#results").innerHTML="";
+  setStatus('<span class="spin"></span> Submitting task…');
+  try{
+    const r=await fetch("/api/generate",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(payload)});
+    const j=await r.json();
+    const tid=j.data&&j.data.task_id;
+    if(!tid){setStatus("Error: "+JSON.stringify(j),"err");$("#btnGen").disabled=false;return;}
+    setStatus('<span class="spin"></span> Task '+tid+' queued…');
+    poll(tid,c);
+  }catch(e){setStatus("Error: "+e,"err");$("#btnGen").disabled=false;}
+}
+
+function poll(tid,c){
+  clearInterval(pollTimer);
+  pollTimer=setInterval(async()=>{
+    try{
+      const r=await fetch("/api/status",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({task_id_list:[tid],base_url:c.base_url,api_key:c.api_key})});
+      const j=await r.json();
+      const item=(j.data||[])[0];if(!item)return;
+      const st=item.status;
+      if(st===1){clearInterval(pollTimer);$("#btnGen").disabled=false;setStatus("✓ Done","ok");showResults(item,c);}
+      else if(st===2){clearInterval(pollTimer);$("#btnGen").disabled=false;setStatus("✗ Failed: "+(item.error||"unknown"),"err");}
+      else{setStatus('<span class="spin"></span> Generating… (task '+tid+')');}
+    }catch(e){/* keep polling */}
+  },3000);
+}
+
+function showResults(item,c){
+  let arr=[];
+  try{arr=typeof item.result==="string"?JSON.parse(item.result):(item.result||[]);}catch(e){arr=[];}
+  if(!Array.isArray(arr))arr=[arr];
+  $("#results").innerHTML=arr.map((res,i)=>{
+    const path=res.file||"";
+    const src=`/api/audio?base_url=${encodeURIComponent(c.base_url)}&api_key=${encodeURIComponent(c.api_key)}&path=${encodeURIComponent(path)}`;
+    const m=res.metas||{};
+    return `<div class="res"><b>Variant ${i+1}</b>
+      <audio controls src="${src}"></audio>
+      <div class="meta">bpm: ${m.bpm||"?"} · key: ${m.keyscale||"?"} · ts: ${m.timesignature||"?"} · dur: ${m.duration||"?"}s · seed: ${res.seed_value||"?"}<br>model: ${res.dit_model||"?"} / lm: ${res.lm_model||"—"}</div>
+      <a href="${src}" download="acestep_${i+1}">⬇ Download</a></div>`;
+  }).join("")||'<div class="hint">No audio returned.</div>';
+}
+
+function loadConn(){$("#base_url").value=localStorage.ace_base||"";$("#api_key").value=localStorage.ace_key||"";}
+function saveConn(){localStorage.ace_base=$("#base_url").value;localStorage.ace_key=$("#api_key").value;}
+
+(async function init(){
+  const r=await fetch("/api/schema");const j=await r.json();SCHEMA=j.schema;
+  loadConn();
+  if(!$("#base_url").value)$("#base_url").value=j.default_base_url||"http://localhost:8001";
+  render();
+  $("#base_url").addEventListener("change",saveConn);
+  $("#api_key").addEventListener("change",saveConn);
+  $("#btnGen").addEventListener("click",generate);
+  $("#btnModels").addEventListener("click",listModels);
+  $("#btnReset").addEventListener("click",()=>{render();});
+})();
+</script>
+</body>
+</html>

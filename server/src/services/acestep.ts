@@ -677,6 +677,10 @@ async function processGenerationViaPython(
       '--json',
     ];
 
+    // Model selection: pass the UI-selected DiT model to the generation script.
+    // simple_generate.py falls back to ACESTEP_CONFIG_PATH env, then acestep-v15-turbo.
+    if (params.ditModel) args.push('--config-path', params.ditModel);
+
     if (lyrics) args.push('--lyrics', lyrics);
     if (params.instrumental) args.push('--instrumental');
     if (params.bpm && params.bpm > 0) args.push('--bpm', String(params.bpm));

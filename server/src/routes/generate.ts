@@ -610,7 +610,11 @@ router.get('/models', async (_req, res: Response) => {
       'acestep-v15-sft',               // submodel
       'acestep-v15-turbo-shift1',      // submodel
       'acestep-v15-turbo-shift3',      // submodel
-      'acestep-v15-turbo-continuous',   // submodel
+      'acestep-v15-turbo-continuous',  // submodel
+      // 4B XL models (≈9GB download, need GPU offload — best on T4+ GPU, not CPU):
+      'acestep-v15-xl-turbo',          // 4B XL turbo — best practical quality (recommended for T4)
+      'acestep-v15-xl-base',           // 4B XL — high quality, 50 steps + CFG
+      'acestep-v15-xl-sft',            // 4B XL — highest quality, 50 steps + CFG
     ];
 
     // Query Gradio /v1/models to get the currently loaded/active model
