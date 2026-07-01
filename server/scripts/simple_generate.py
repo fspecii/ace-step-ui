@@ -83,6 +83,8 @@ def generate(
     use_cot_metas: bool = True,
     use_cot_caption: bool = True,
     use_cot_language: bool = True,
+    lm_model: str = "",
+    lm_backend: str = "pt",
 
     # Advanced parameters
     use_adg: bool = False,
@@ -94,6 +96,65 @@ def generate(
 ):
     """Generate music and return audio file paths."""
     handler, llm_handler = get_handlers()
+
+    # Initialize LLM handler if thinking is requested and it has not been initialized
+    need_llm = (
+        thinking
+        or use_cot_metas
+        or use_cot_caption
+        or use_cot_language
+    )
+
+    if need_llm and not llm_handler.llm_initialized:
+        checkpoint_dir = os.path.join(ACESTEP_PATH, "checkpoints")
+        
+        # Determine backend
+        backend = lm_backend or "pt"
+        if backend == "auto":
+            backend = "pt"
+            
+        # Resolve device
+        if torch.cuda.is_available():
+            device = "cuda"
+        elif torch.backends.mps.is_available():
+            device = "mps"
+        else:
+            device = "cpu"
+
+        # Determine model path
+        lm_model_path = lm_model if (lm_model and lm_model.strip()) else None
+        if not lm_model_path:
+            # Auto-detect existing model on disk
+            if os.path.exists(os.path.join(checkpoint_dir, "acestep-5Hz-lm-1.7B")):
+                lm_model_path = "acestep-5Hz-lm-1.7B"
+            elif os.path.exists(os.path.join(checkpoint_dir, "acestep-5Hz-lm-0.6B")):
+                lm_model_path = "acestep-5Hz-lm-0.6B"
+            else:
+                lm_model_path = "acestep-5Hz-lm-0.6B"  # Default fallback
+
+        # Check if model exists, if not auto-download
+        model_dir = os.path.join(checkpoint_dir, lm_model_path)
+        if not os.path.exists(model_dir) or not os.listdir(model_dir):
+            print(f"[simple_generate] LLM Model {lm_model_path} not found, downloading...")
+            try:
+                from acestep.model_downloader import download_submodel
+                from pathlib import Path
+                success, msg = download_submodel(lm_model_path, Path(checkpoint_dir))
+                if not success:
+                    print(f"Warning: failed to download submodel {lm_model_path}: {msg}")
+            except Exception as download_err:
+                print(f"Warning: could not download LLM model: {download_err}")
+
+        print(f"[simple_generate] Initializing LLMHandler with model '{lm_model_path}' on device '{device}'...")
+        status, success = llm_handler.initialize(
+            checkpoint_dir=checkpoint_dir,
+            lm_model_path=lm_model_path,
+            backend=backend,
+            device=device,
+            offload_to_cpu=True,
+        )
+        if not success:
+            raise RuntimeError(f"Failed to initialize LLM: {status}")
 
     if output_dir is None:
         output_dir = os.path.join(ACESTEP_PATH, "output")
@@ -212,6 +273,8 @@ def main():
     parser.add_argument("--no-cot-metas", action="store_true", help="Disable CoT for metadata")
     parser.add_argument("--no-cot-caption", action="store_true", help="Disable CoT for caption")
     parser.add_argument("--no-cot-language", action="store_true", help="Disable CoT for language")
+    parser.add_argument("--lm-model", type=str, default="", help="LLM model path or name")
+    parser.add_argument("--lm-backend", type=str, default="pt", choices=["pt", "vllm", "mlx", "auto"], help="LLM backend")
 
     # Advanced parameters
     parser.add_argument("--use-adg", action="store_true", help="Use Adaptive Dual Guidance")
@@ -264,6 +327,8 @@ def main():
             use_cot_metas=not args.no_cot_metas,
             use_cot_caption=not args.no_cot_caption,
             use_cot_language=not args.no_cot_language,
+            lm_model=args.lm_model,
+            lm_backend=args.lm_backend,
 
             # Advanced
             use_adg=args.use_adg,
