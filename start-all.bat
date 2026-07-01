@@ -44,10 +44,10 @@ REM Detect ACE-Step installation type
 set API_COMMAND=
 if exist "%ACESTEP_PATH%\python_embeded\python.exe" (
     echo [+] Detected Windows Portable Package
-    set API_COMMAND=python_embeded\python acestep\api_server.py
+    set API_COMMAND=python_embeded\python -m acestep --port 8001 --enable-api --backend pt --server-name 127.0.0.1
 ) else (
     echo [+] Detected Standard Installation
-    set API_COMMAND=uv run acestep-api --port 8001
+    set API_COMMAND=uv run acestep --port 8001 --enable-api --backend pt --server-name 127.0.0.1
 )
 
 REM Get local IP for LAN access
@@ -63,9 +63,9 @@ echo   Starting All Services...
 echo ==================================
 echo.
 
-REM Start ACE-Step API in new window
-echo [1/3] Starting ACE-Step API server...
-start "ACE-Step API Server" cmd /k "cd /d "%ACESTEP_PATH%" && %API_COMMAND%"
+REM Start ACE-Step Gradio server in new window
+echo [1/3] Starting ACE-Step Gradio server...
+start "ACE-Step Server" cmd /k "cd /d "%ACESTEP_PATH%" && %API_COMMAND%"
 
 REM Wait for API to start
 echo Waiting for API to initialize...
@@ -91,7 +91,7 @@ echo ==================================
 echo   All Services Running!
 echo ==================================
 echo.
-echo   ACE-Step API: http://localhost:8001
+echo   ACE-Step:     http://localhost:8001
 echo   Backend:      http://localhost:3001
 echo   Frontend:     http://localhost:3000
 echo.

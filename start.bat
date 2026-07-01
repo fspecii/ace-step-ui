@@ -33,7 +33,7 @@ echo Starting ACE-Step UI...
 echo.
 echo Make sure ACE-Step API is running:
 echo   cd path\to\ACE-Step
-echo   uv run acestep-api --port 8001
+echo   uv run acestep --port 8001 --enable-api --backend pt --server-name 127.0.0.1
 echo.
 echo ==================================
 echo.

@@ -52,10 +52,10 @@ echo
 # Create log directory
 mkdir -p logs
 
-# Start ACE-Step API in background
-echo "[1/3] Starting ACE-Step API server..."
+# Start ACE-Step Gradio+API in background
+echo "[1/3] Starting ACE-Step Gradio server..."
 cd "$ACESTEP_PATH"
-uv run acestep-api --port 8001 > "../ace-step-ui/logs/api.log" 2>&1 &
+uv run acestep --port 8001 --enable-api --backend pt --server-name 127.0.0.1 > "../ace-step-ui/logs/api.log" 2>&1 &
 API_PID=$!
 cd - > /dev/null
 
@@ -63,9 +63,9 @@ cd - > /dev/null
 echo "Waiting for API to initialize..."
 sleep 5
 
-# Check if API started successfully
+# Check if ACE-Step started successfully
 if ! kill -0 $API_PID 2>/dev/null; then
-    echo "Error: API failed to start. Check logs/api.log"
+    echo "Error: ACE-Step failed to start. Check logs/api.log"
     exit 1
 fi
 
@@ -107,7 +107,7 @@ echo "=================================="
 echo "  All Services Running!"
 echo "=================================="
 echo
-echo "  ACE-Step API: http://localhost:8001"
+echo "  ACE-Step:     http://localhost:8001"
 echo "  Backend:      http://localhost:3001"
 echo "  Frontend:     http://localhost:3000"
 echo

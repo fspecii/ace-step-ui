@@ -520,7 +520,7 @@ router.get('/status/:jobId', authMiddleware, async (req: AuthenticatedRequest, r
 });
 
 // Audio proxy endpoint
-router.get('/audio', async (req, res: Response) => {
+router.get('/audio', authMiddleware, async (req, res: Response) => {
   try {
     const audioPath = req.query.path as string;
     if (!audioPath) {

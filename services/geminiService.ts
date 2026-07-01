@@ -1,6 +1,6 @@
 import { GoogleGenAI, Type } from "@google/genai";
 
-const apiKey = process.env.API_KEY || ''; // Fallback for dev env without key
+const apiKey = import.meta.env.VITE_GEMINI_API_KEY || ''; // Optional client-provided key
 const ai = new GoogleGenAI({ apiKey });
 
 export const generateSongData = async (

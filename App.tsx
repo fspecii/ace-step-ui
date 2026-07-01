@@ -36,7 +36,11 @@ function AppContent() {
   const { user, token, isAuthenticated, isLoading: authLoading, setupUser, logout } = useAuth();
   const [showUsernameModal, setShowUsernameModal] = useState(false);
   // Track multiple concurrent generation jobs
-  const activeJobsRef = useRef<Map<string, { tempId: string; pollInterval: ReturnType<typeof setInterval> }>>(new Map());
+  const activeJobsRef = useRef<Map<string, {
+    tempId: string;
+    pollInterval: ReturnType<typeof setInterval>;
+    consecutivePollErrors: number;
+  }>>(new Map());
   const [activeJobCount, setActiveJobCount] = useState(0);
 
   // Theme State
@@ -703,6 +707,11 @@ function AppContent() {
     const pollInterval = setInterval(async () => {
       try {
         const status = await generateApi.getStatus(jobId, token);
+        const trackedJob = activeJobsRef.current.get(jobId);
+        if (trackedJob && trackedJob.consecutivePollErrors !== 0) {
+          trackedJob.consecutivePollErrors = 0;
+          activeJobsRef.current.set(jobId, trackedJob);
+        }
         const normalizedProgress = Number.isFinite(Number(status.progress))
           ? (Number(status.progress) > 1 ? Number(status.progress) / 100 : Number(status.progress))
           : undefined;
@@ -736,12 +745,33 @@ function AppContent() {
           showToast(`${t('generationFailed')}: ${status.error || 'Unknown error'}`, 'error');
         }
       } catch (pollError) {
-        console.error(`Polling error for job ${jobId}:`, pollError);
+        const trackedJob = activeJobsRef.current.get(jobId);
+        if (!trackedJob) return;
+
+        trackedJob.consecutivePollErrors += 1;
+        activeJobsRef.current.set(jobId, trackedJob);
+
+        console.error(
+          `Polling error for job ${jobId} (attempt ${trackedJob.consecutivePollErrors}/5):`,
+          pollError
+        );
+
+        // Keep the in-flight item visible on transient API hiccups.
+        if (trackedJob.consecutivePollErrors < 5) {
+          setSongs(prev => prev.map(s => (
+            s.id === tempId
+              ? { ...s, stage: 'Reconnecting...', queuePosition: s.queuePosition, progress: s.progress }
+              : s
+          )));
+          return;
+        }
+
         cleanupJob(jobId, tempId);
+        showToast('Lost connection to generation status. Please check history and retry if needed.', 'error');
       }
     }, 2000);
 
-    activeJobsRef.current.set(jobId, { tempId, pollInterval });
+    activeJobsRef.current.set(jobId, { tempId, pollInterval, consecutivePollErrors: 0 });
     setActiveJobCount(activeJobsRef.current.size);
 
     setTimeout(() => {

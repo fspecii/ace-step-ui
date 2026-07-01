@@ -1,5 +1,5 @@
 import { writeFile, mkdir, copyFile, rm, readFile } from 'fs/promises';
-import { spawn, execSync } from 'child_process';
+import { spawn, execFileSync } from 'child_process';
 import { existsSync } from 'fs';
 import path from 'path';
 import { handle_file } from '@gradio/client';
@@ -7,8 +7,9 @@ import { handle_file } from '@gradio/client';
 // Get audio duration using ffprobe
 function getAudioDuration(filePath: string): number {
   try {
-    const result = execSync(
-      `ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 "${filePath}"`,
+    const result = execFileSync(
+      'ffprobe',
+      ['-v', 'error', '-show_entries', 'format=duration', '-of', 'default=noprint_wrappers=1:nokey=1', filePath],
       { encoding: 'utf-8', timeout: 10000 }
     );
     const duration = parseFloat(result.trim());
@@ -27,6 +28,7 @@ const __dirname = path.dirname(__filename);
 const AUDIO_DIR = path.join(__dirname, '../../public/audio');
 
 const ACESTEP_API = config.acestep.apiUrl;
+const ACESTEP_API_ORIGIN = new URL(ACESTEP_API).origin;
 
 // Resolve ACE-Step path (from env or default relative path)
 function resolveAceStepPath(): string {
@@ -128,7 +130,8 @@ async function prepareAudioFile(audioUrl: string | undefined): Promise<unknown> 
 }
 
 /**
- * Build the 50 positional arguments for the Gradio /generation_wrapper endpoint.
+ * Build positional arguments for the Gradio /generation_wrapper endpoint.
+ * Keep this order aligned with ACE-Step's gradio_ui/events/__init__.py.
  */
 async function buildGradioArgs(params: GenerationParams): Promise<unknown[]> {
   const caption = params.style || 'pop music';
@@ -181,7 +184,7 @@ async function buildGradioArgs(params: GenerationParams): Promise<unknown[]> {
     params.audioFormat || 'mp3',                                  // 27: Audio Format
     params.lmTemperature ?? 0.85,                                 // 28: LM Temperature
     isThinking,                                                   // 29: Think
-    params.lmCfgScale ?? 2.0,                                    // 30: LM CFG Scale
+    params.lmCfgScale ?? 2.0,                                     // 30: LM CFG Scale
     params.lmTopK ?? 0,                                           // 31: LM Top-K
     params.lmTopP ?? 0.9,                                         // 32: LM Top-P
     params.lmNegativePrompt || 'NO USER INPUT',                   // 33: LM Negative Prompt
@@ -654,7 +657,10 @@ async function processGenerationViaPython(
   const prompt = params.customMode ? caption : (params.songDescription || caption);
   const lyrics = params.instrumental ? '' : (params.lyrics || '');
 
-  console.log(`Job ${jobId}: Using Python spawn (Gradio not available)`, {
+  // The REST API fallback was removed; keep the Python spawn path as the only runtime path.
+
+  // Fall back to Python spawn if API not available
+  console.log(`Job ${jobId}: Using Python spawn (API not available)`, {
     prompt: prompt.slice(0, 50),
     lyricsPreview: lyrics.slice(0, 50),
     duration: params.duration,
@@ -662,10 +668,23 @@ async function processGenerationViaPython(
   });
 
   try {
+    const updateLocalProgress = (progress?: number, stage?: string): void => {
+      if (Number.isFinite(Number(progress))) {
+        const clamped = Math.max(0, Math.min(1, Number(progress)));
+        job.progress = Math.max(job.progress ?? 0, clamped);
+      }
+      if (stage && stage.trim()) {
+        job.stage = stage.trim();
+      }
+    };
+    updateLocalProgress(0.02, 'Initializing local generation...');
+
     const jobOutputDir = path.join(ACESTEP_DIR, 'output', jobId);
     await mkdir(jobOutputDir, { recursive: true });
 
-    const durationToSend = params.duration && params.duration > 0 ? params.duration : 60;
+    // Keep "auto duration" behavior for local mode when user doesn't specify a duration.
+    // The Python wrapper will attempt LM-based duration inference first, then heuristic fallback.
+    const durationToSend = params.duration && params.duration > 0 ? params.duration : 0;
     const args = [
       '--prompt', prompt,
       '--duration', String(durationToSend),
@@ -717,7 +736,106 @@ async function processGenerationViaPython(
     if (params.cfgIntervalStart !== undefined && params.cfgIntervalStart > 0) args.push('--cfg-interval-start', String(params.cfgIntervalStart));
     if (params.cfgIntervalEnd !== undefined && params.cfgIntervalEnd < 1.0) args.push('--cfg-interval-end', String(params.cfgIntervalEnd));
 
-    const result = await runPythonGeneration(args);
+    const taskType = params.taskType ?? 'text2music';
+    const envOverrides: Record<string, string> = {};
+    const requestedBatchSize = Math.max(1, params.batchSize ?? 1);
+    const shouldSerialCoverBatch =
+      (taskType === 'cover' || taskType === 'audio2audio') && requestedBatchSize > 1;
+
+    const setArgValue = (argList: string[], flag: string, value: string): void => {
+      const idx = argList.indexOf(flag);
+      if (idx >= 0 && idx + 1 < argList.length) {
+        argList[idx + 1] = value;
+      } else {
+        argList.push(flag, value);
+      }
+    };
+
+    const removeArgWithValue = (argList: string[], flag: string): void => {
+      const idx = argList.indexOf(flag);
+      if (idx >= 0) {
+        argList.splice(idx, 2);
+      }
+    };
+
+    let result: PythonResult;
+    if (shouldSerialCoverBatch) {
+      console.log(
+        `[ACE-Step] cover/audio2audio batch=${requestedBatchSize}: running serial single-item generations to reduce peak memory`,
+      );
+
+      const mergedAudioPaths: string[] = [];
+      let totalElapsedSeconds = 0;
+      let resolvedDurationSeconds: number | undefined;
+      let durationSource: string | undefined;
+      let lmInitialized = false;
+
+      for (let i = 0; i < requestedBatchSize; i += 1) {
+        updateLocalProgress(
+          i / requestedBatchSize,
+          `Generating variation ${i + 1}/${requestedBatchSize}...`,
+        );
+
+        const serialArgs = [...args];
+        setArgValue(serialArgs, '--batch-size', '1');
+        setArgValue(serialArgs, '--output-dir', path.join(jobOutputDir, `item_${i}`));
+
+        // Match ACE-Step seed semantics: when a single fixed seed is provided for a batch,
+        // only the first item uses it and the remaining items use random seeds.
+        if (params.randomSeed === false && params.seed !== undefined && params.seed >= 0 && i > 0) {
+          removeArgWithValue(serialArgs, '--seed');
+        }
+
+        const serialResult = await runPythonGeneration(
+          serialArgs,
+          envOverrides,
+          (event) => {
+            const perItemProgress = Number.isFinite(Number(event.progress))
+              ? Math.max(0, Math.min(1, Number(event.progress)))
+              : undefined;
+            const weightedProgress =
+              perItemProgress === undefined
+                ? undefined
+                : (i + perItemProgress) / requestedBatchSize;
+            const weightedStage = event.stage
+              ? `Variation ${i + 1}/${requestedBatchSize}: ${event.stage}`
+              : `Generating variation ${i + 1}/${requestedBatchSize}...`;
+            updateLocalProgress(weightedProgress, weightedStage);
+          },
+        );
+        if (!serialResult.success) {
+          throw new Error(serialResult.error || `Serial generation failed at item ${i + 1}`);
+        }
+        if (!serialResult.audio_paths || serialResult.audio_paths.length === 0) {
+          throw new Error(`No audio files generated for serial item ${i + 1}`);
+        }
+
+        mergedAudioPaths.push(...serialResult.audio_paths);
+        totalElapsedSeconds += serialResult.elapsed_seconds ?? 0;
+        if (!resolvedDurationSeconds && serialResult.resolved_duration_seconds && serialResult.resolved_duration_seconds > 0) {
+          resolvedDurationSeconds = serialResult.resolved_duration_seconds;
+          durationSource = serialResult.duration_source;
+        }
+        lmInitialized = lmInitialized || Boolean(serialResult.lm_initialized);
+        updateLocalProgress(
+          (i + 1) / requestedBatchSize,
+          `Completed variation ${i + 1}/${requestedBatchSize}`,
+        );
+      }
+
+      result = {
+        success: true,
+        audio_paths: mergedAudioPaths,
+        elapsed_seconds: totalElapsedSeconds,
+        resolved_duration_seconds: resolvedDurationSeconds,
+        duration_source: durationSource,
+        lm_initialized: lmInitialized,
+      };
+    } else {
+      result = await runPythonGeneration(args, envOverrides, (event) => {
+        updateLocalProgress(event.progress, event.stage);
+      });
+    }
 
     if (!result.success) {
       throw new Error(result.error || 'Generation failed');
@@ -745,12 +863,21 @@ async function processGenerationViaPython(
     }
 
     try {
+      updateLocalProgress(0.98, 'Finalizing generated audio files...');
       await rm(jobOutputDir, { recursive: true, force: true });
     } catch (cleanupError) {
       console.warn(`Job ${jobId}: Failed to cleanup output dir`, cleanupError);
     }
 
-    const finalDuration = actualDuration > 0 ? actualDuration : (params.duration && params.duration > 0 ? params.duration : 0);
+    const pythonResolvedDuration =
+      typeof result.resolved_duration_seconds === 'number' && result.resolved_duration_seconds > 0
+        ? Math.round(result.resolved_duration_seconds)
+        : 0;
+
+    const finalDuration =
+      actualDuration > 0
+        ? actualDuration
+        : (pythonResolvedDuration || (params.duration && params.duration > 0 ? params.duration : 30));
 
     job.status = 'succeeded';
     job.result = {
@@ -761,6 +888,7 @@ async function processGenerationViaPython(
       timeSignature: params.timeSignature,
       status: 'succeeded',
     };
+    updateLocalProgress(1, 'Completed');
     job.rawResponse = result;
     console.log(`Job ${jobId}: Completed via Python in ${result.elapsed_seconds?.toFixed(1)}s with ${audioUrls.length} audio files`);
 
@@ -780,10 +908,23 @@ interface PythonResult {
   success: boolean;
   audio_paths?: string[];
   elapsed_seconds?: number;
+  resolved_duration_seconds?: number;
+  duration_source?: string;
+  lm_initialized?: boolean;
   error?: string;
 }
 
-function runPythonGeneration(scriptArgs: string[], timeoutMs = 600000): Promise<PythonResult> {
+interface PythonProgressEvent {
+  progress?: number;
+  stage?: string;
+}
+
+function runPythonGeneration(
+  scriptArgs: string[],
+  envOverrides: Record<string, string> = {},
+  onProgress?: (event: PythonProgressEvent) => void,
+  timeoutMs = 600000,
+): Promise<PythonResult> {
   return new Promise((resolve) => {
     const pythonPath = resolvePythonPath(ACESTEP_DIR);
     const args = [PYTHON_SCRIPT, ...scriptArgs];
@@ -793,6 +934,7 @@ function runPythonGeneration(scriptArgs: string[], timeoutMs = 600000): Promise<
       env: {
         ...process.env,
         ACESTEP_PATH: ACESTEP_DIR,
+        ...envOverrides,
       },
     });
 
@@ -805,23 +947,53 @@ function runPythonGeneration(scriptArgs: string[], timeoutMs = 600000): Promise<
 
     let stdout = '';
     let stderr = '';
+    let stderrBuffer = '';
+    const progressPrefix = '__ACE_STEP_PROGRESS__';
+
+    const handleStderrLine = (line: string): void => {
+      const trimmed = line.trim();
+      if (!trimmed) return;
+
+      if (trimmed.startsWith(progressPrefix)) {
+        const payload = trimmed.slice(progressPrefix.length);
+        try {
+          const parsed = JSON.parse(payload) as PythonProgressEvent;
+          if (onProgress) {
+            onProgress(parsed);
+          }
+        } catch {
+          // fall through to normal logging when payload is malformed
+          console.log(`[ACE-Step] ${trimmed}`);
+        }
+        return;
+      }
+
+      console.log(`[ACE-Step] ${trimmed}`);
+    };
 
     proc.stdout.on('data', (data) => {
       stdout += data.toString();
     });
 
     proc.stderr.on('data', (data) => {
-      stderr += data.toString();
-      const lines = data.toString().split('\n');
-      for (const line of lines) {
-        if (line.trim()) {
-          console.log(`[ACE-Step] ${line}`);
-        }
+      const chunk = data.toString();
+      stderr += chunk;
+      stderrBuffer += chunk;
+
+      let lineBreakIdx = stderrBuffer.indexOf('\n');
+      while (lineBreakIdx >= 0) {
+        const line = stderrBuffer.slice(0, lineBreakIdx);
+        stderrBuffer = stderrBuffer.slice(lineBreakIdx + 1);
+        handleStderrLine(line);
+        lineBreakIdx = stderrBuffer.indexOf('\n');
       }
     });
 
     proc.on('close', (code) => {
       clearTimeout(timer);
+      if (stderrBuffer.trim()) {
+        handleStderrLine(stderrBuffer);
+      }
       if (code !== 0) {
         resolve({ success: false, error: stderr || `Process exited with code ${code}` });
         return;
@@ -879,6 +1051,16 @@ export async function getJobStatus(jobId: string): Promise<JobStatus> {
   }
 
   const elapsed = Math.floor((Date.now() - job.startTime) / 1000);
+  const fallbackEtaSeconds = Math.max(0, 180 - elapsed);
+  const etaFromProgress = (() => {
+    const p = Number(job.progress);
+    if (!Number.isFinite(p) || p <= 0 || p >= 1) {
+      return undefined;
+    }
+    // Linear estimate from observed progress.
+    return Math.max(0, Math.round((elapsed / p) - elapsed));
+  })();
+  const resolvedEtaSeconds = etaFromProgress ?? fallbackEtaSeconds;
 
   if (job.status === 'queued') {
     return {
@@ -888,10 +1070,57 @@ export async function getJobStatus(jobId: string): Promise<JobStatus> {
     };
   }
 
-  // Running — Gradio handles its own queue, we just report estimated time
+  if (job.status === 'running' && job.taskId) {
+    try {
+      const response = await fetch(`${ACESTEP_API}/query_result`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ task_id_list: [job.taskId] }),
+      });
+
+      if (response.ok) {
+        const result = await response.json();
+        const taskData = result.data?.[0];
+        if (taskData?.result) {
+          let resultData: unknown = taskData.result;
+          if (typeof resultData === 'string') {
+            try {
+              resultData = JSON.parse(resultData);
+            } catch {
+              resultData = null;
+            }
+          }
+
+          const item = Array.isArray(resultData) ? resultData[0] : resultData;
+          if (item && typeof item === 'object') {
+            const rawProgress = (item as any).progress;
+            const progress = Number.isFinite(Number(rawProgress)) ? Number(rawProgress) : undefined;
+            const stage = typeof (item as any).stage === 'string' ? (item as any).stage : undefined;
+            if (progress !== undefined) job.progress = progress;
+            if (stage) job.stage = stage;
+            const normalizedProgress = progress !== undefined
+              ? Math.max(0, Math.min(1, progress > 1 ? progress / 100 : progress))
+              : undefined;
+            const apiEta = normalizedProgress && normalizedProgress > 0 && normalizedProgress < 1
+              ? Math.max(0, Math.round((elapsed / normalizedProgress) - elapsed))
+              : fallbackEtaSeconds;
+            return {
+              status: job.status,
+              etaSeconds: apiEta,
+              progress: progress ?? job.progress,
+              stage: stage ?? job.stage,
+            };
+          }
+        }
+      }
+    } catch {
+      // ignore progress fetch failures, fall back to ETA only
+    }
+  }
+
   return {
     status: job.status,
-    etaSeconds: Math.max(0, 180 - elapsed),
+    etaSeconds: resolvedEtaSeconds,
     progress: job.progress,
     stage: job.stage,
   };
@@ -909,6 +1138,10 @@ export function getJobRawResponse(jobId: string): unknown | null {
 
 export async function getAudioStream(audioPath: string): Promise<Response> {
   if (audioPath.startsWith('http')) {
+    const parsed = new URL(audioPath);
+    if (parsed.origin !== ACESTEP_API_ORIGIN) {
+      throw new Error('Remote audio URLs are restricted to the configured ACE-Step API origin');
+    }
     return fetch(audioPath);
   }
 
@@ -924,20 +1157,6 @@ export async function getAudioStream(audioPath: string): Promise<Response> {
     } catch (err) {
       console.error('Failed to read local audio file:', localPath, err);
       return new Response(null, { status: 404 });
-    }
-  }
-
-  // Absolute path — try reading directly from disk (Gradio output files)
-  if (audioPath.startsWith('/')) {
-    try {
-      const buffer = await readFile(audioPath);
-      const ext = audioPath.endsWith('.flac') ? 'flac' : audioPath.endsWith('.wav') ? 'wav' : 'mpeg';
-      return new Response(buffer, {
-        status: 200,
-        headers: { 'Content-Type': `audio/${ext}` }
-      });
-    } catch {
-      // Fall through to Gradio API
     }
   }
 
