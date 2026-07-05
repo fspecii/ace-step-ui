@@ -4,6 +4,7 @@ import { Song, Playlist } from '../types';
 import { songsApi, usersApi, playlistsApi, searchApi, UserProfile, getAudioUrl } from '../services/api';
 import { useI18n } from '../context/I18nContext';
 import { GENRE_KEYS } from '../data/genres';
+import { getAvatarUrl } from '../utils/avatar';
 
 interface SearchPageProps {
   onPlaySong?: (song: Song, list?: Song[]) => void;
@@ -20,6 +21,25 @@ const MAX_RESULTS = 20;
 interface ExtendedSong extends Song {
   creator_avatar?: string | null;
 }
+
+const getModelDisplayName = (modelId?: string): string => {
+  if (!modelId) return 'ACE';
+  const mapping: Record<string, string> = {
+    'acestep-v1-5': '1.5',
+    'acestep-v1.5': '1.5',
+    'acestep-v1.5-turbo': '1.5T',
+    'acestep-v15-turbo': '1.5T',
+    'acestep-v1.5-xl-turbo': '1.5XL-T',
+    'acestep-v15-xl-turbo': '1.5XL-T',
+    'acestep-v1.5-turbo-s3': '1.5TS3',
+    'acestep-v15-turbo-s3': '1.5TS3',
+  };
+  return mapping[modelId] || modelId.replace(/^acestep-/, '').replace(/^v/, '').toUpperCase();
+};
+
+const getSongModelId = (song: ExtendedSong): string | undefined => {
+  return song.ditModel || song.generationParams?.ditModel || song.generationParams?.dit_model;
+};
 
 export const SearchPage: React.FC<SearchPageProps> = ({
   onPlaySong,
@@ -68,6 +88,8 @@ export const SearchPage: React.FC<SearchPageProps> = ({
     viewCount: s.view_count || s.viewCount || 0,
     creator: s.creator,
     creator_avatar: s.creator_avatar || s.creatorAvatar || null,
+    ditModel: s.dit_model || s.ditModel,
+    generationParams: s.generation_params || s.generationParams,
   });
 
   // Shuffle array randomly
@@ -451,6 +473,7 @@ const FeaturedSongCard: React.FC<FeaturedSongCardProps> = ({
 }) => {
   const [isHovered, setIsHovered] = useState(false);
   const tags = song.style?.split(',').map(t => t.trim()).filter(Boolean).slice(0, 2) || [];
+  const modelId = getSongModelId(song);
 
   return (
     <div
@@ -464,7 +487,7 @@ const FeaturedSongCard: React.FC<FeaturedSongCardProps> = ({
           alt={song.title}
           className="w-full h-full object-cover"
         />
-        <div className={`absolute inset-0 bg-black/50 flex items-center justify-center transition-opacity ${isHovered || isPlaying ? 'opacity-100' : 'opacity-0'}`}>
+        <div className={`absolute inset-0 bg-black/50 flex items-center justify-center transition-opacity ${isHovered ? 'opacity-100' : 'opacity-0'}`}>
           {isPlaying ? (
             <Pause size={16} className="text-white" fill="white" />
           ) : (
@@ -477,8 +500,11 @@ const FeaturedSongCard: React.FC<FeaturedSongCardProps> = ({
         <div className="flex items-center gap-1.5 mb-0.5">
           <span className="font-semibold text-zinc-900 dark:text-white text-sm truncate max-w-[140px]">{song.title}</span>
           {song.isPublic !== false && (
-            <span className="flex-shrink-0 text-[8px] font-bold text-white bg-gradient-to-r from-pink-500 to-purple-500 px-1 py-0.5 rounded">
-              v5
+            <span
+              className="inline-flex items-center justify-center flex-shrink-0 text-[9px] font-bold text-[#16301f] bg-[#8fbc8f] border border-[#a7cda6] px-1.5 py-0.5 rounded-sm shadow-[inset_0_1px_0_rgba(255,255,255,0.35)]"
+              title={`DiT model: ${modelId || 'unknown'}`}
+            >
+              {getModelDisplayName(modelId)}
             </span>
           )}
         </div>
@@ -500,17 +526,11 @@ const FeaturedSongCard: React.FC<FeaturedSongCardProps> = ({
               onClick={(e) => { e.stopPropagation(); onNavigateToProfile?.(song.creator!); }}
               className="flex items-center gap-1 hover:text-pink-500 transition-colors max-w-[80px]"
             >
-              {song.creator_avatar ? (
-                <img
-                  src={song.creator_avatar}
-                  alt={song.creator}
-                  className="w-3.5 h-3.5 rounded-full object-cover"
-                />
-              ) : (
-                <div className="w-3.5 h-3.5 rounded-full bg-gradient-to-br from-pink-500 to-purple-500 flex items-center justify-center text-[7px] text-white font-bold flex-shrink-0">
-                  {song.creator.charAt(0).toUpperCase()}
-                </div>
-              )}
+              <img
+                src={getAvatarUrl(song.creator_avatar, song.creator)}
+                alt={song.creator}
+                className="w-3.5 h-3.5 rounded-full object-cover flex-shrink-0"
+              />
               <span className="truncate">{song.creator}</span>
             </button>
           )}
@@ -542,7 +562,7 @@ const CreatorCard: React.FC<CreatorCardProps> = ({
     >
       <div className="w-[90px] h-[90px] mx-auto rounded-full overflow-hidden mb-2 ring-2 ring-transparent group-hover:ring-pink-500 transition-all shadow-lg">
         <img
-          src={creator.avatar_url || `https://api.dicebear.com/7.x/avataaars/svg?seed=${creator.username}`}
+          src={getAvatarUrl(creator.avatar_url, creator.username)}
           alt={creator.username}
           className="w-full h-full object-cover"
         />
@@ -595,7 +615,7 @@ const PlaylistCard: React.FC<PlaylistCardProps> = ({
         >
           <div className="w-4 h-4 rounded-full overflow-hidden flex-shrink-0 bg-zinc-300 dark:bg-zinc-700">
             <img
-              src={playlist.creator_avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${playlist.creator}`}
+              src={getAvatarUrl(playlist.creator_avatar, playlist.creator)}
               alt={playlist.creator}
               className="w-full h-full object-cover"
             />

@@ -2,6 +2,7 @@ import { Router, Response } from 'express';
 import multer from 'multer';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { readFile } from 'fs/promises';
 import { pool } from '../db/pool.js';
 import { generateUUID } from '../db/sqlite.js';
 import { config } from '../config/index.js';
@@ -17,9 +18,13 @@ import {
   getJobRawResponse,
   downloadAudioToBuffer,
   resolvePythonPath,
+  resolveAceStepPath,
 } from '../services/acestep.js';
 import { getStorageProvider } from '../services/storage/factory.js';
-
+import type { StorageProvider } from '../services/storage/index.js';
+// my acestep path
+// process.env.ACESTEP_PATH = 'D:\\ACE1.5';
+// process.env.PYTHON_PATH = 'D:\\ACE1.5\\.venv\\Scripts\\python.exe';
 const router = Router();
 
 // Auto-generate a song title from lyrics or style when none is provided
@@ -44,6 +49,49 @@ function autoTitle(params: { title?: string; lyrics?: string; instrumental?: boo
   }
 
   return 'Untitled';
+}
+
+function replaceExtension(filePath: string, ext: string): string {
+  return filePath.replace(/\.[^/.]+$/, ext);
+}
+
+async function readGeneratedCompanionFile(fileUrl: string): Promise<Buffer | null> {
+  try {
+    if (fileUrl.startsWith('/audio/')) {
+      const localPath = path.join(config.storage.audioDir, fileUrl.replace('/audio/', ''));
+      return await readFile(localPath);
+    }
+
+    const { buffer } = await downloadAudioToBuffer(fileUrl);
+    return buffer;
+  } catch {
+    return null;
+  }
+}
+
+async function uploadSyncedLyricsIfAvailable(
+  storage: StorageProvider,
+  sourceAudioUrl: string,
+  finalAudioStorageKey: string
+): Promise<void> {
+  const lyricCandidates = [
+    replaceExtension(sourceAudioUrl, '.lrc'),
+    replaceExtension(sourceAudioUrl, '.vtt'),
+  ];
+
+  for (const lyricUrl of lyricCandidates) {
+    const lyricBuffer = await readGeneratedCompanionFile(lyricUrl);
+    if (!lyricBuffer || lyricBuffer.length === 0) continue;
+
+    const lrcStorageKey = replaceExtension(finalAudioStorageKey, '.lrc');
+    try {
+      await storage.upload(lrcStorageKey, lyricBuffer, 'text/plain; charset=utf-8');
+      console.log(`Stored synced lyrics for ${sourceAudioUrl} at ${storage.getPublicUrl(lrcStorageKey)}`);
+    } catch (err) {
+      console.warn(`Failed to store synced lyrics for ${sourceAudioUrl}:`, err);
+    }
+    return;
+  }
 }
 
 const audioUpload = multer({
@@ -148,10 +196,16 @@ interface GenerateBody {
   lmBatchChunkSize?: number;
   trackName?: string;
   completeTrackClasses?: string[];
+  dcwEnabled?: boolean;
+  dcwMode?: string;
+  dcwScaler?: number;
+  dcwHighScaler?: number;
+  dcwWavelet?: string;
   isFormatCaption?: boolean;
 
   // Model selection
   ditModel?: string;
+  vaeModel?: string;
 }
 
 router.post('/upload-audio', authMiddleware, (req: AuthenticatedRequest, res: Response, next: Function) => {
@@ -265,6 +319,12 @@ router.post('/', authMiddleware, async (req: AuthenticatedRequest, res: Response
       completeTrackClasses,
       isFormatCaption,
       ditModel,
+      dcwEnabled,
+      dcwMode,
+      dcwScaler,
+      dcwHighScaler,
+      dcwWavelet,
+      vaeModel,
     } = req.body as GenerateBody;
 
     if (!customMode && !songDescription) {
@@ -333,6 +393,12 @@ router.post('/', authMiddleware, async (req: AuthenticatedRequest, res: Response
       completeTrackClasses,
       isFormatCaption,
       ditModel,
+      dcwEnabled,
+      dcwMode,
+      dcwScaler,
+      dcwHighScaler,
+      dcwWavelet,
+      vaeModel,
     };
 
     // Create job record in database
@@ -424,12 +490,17 @@ router.get('/status/:jobId', authMiddleware, async (req: AuthenticatedRequest, r
               const songTitle = autoTitle(params) + variationSuffix;
 
               const songId = generateUUID();
+              const scorePayload = Array.isArray(aceStatus.result.scores) ? aceStatus.result.scores[i] : undefined;
+              const songGenerationParams = scorePayload
+                ? { ...params, score: scorePayload, scores: scorePayload }
+                : params;
 
               try {
                 const { buffer } = await downloadAudioToBuffer(audioUrl);
                 const ext = audioUrl.includes('.flac') ? '.flac' : '.mp3';
                 const storageKey = `${req.user!.id}/${songId}${ext}`;
                 await storage.upload(storageKey, buffer, `audio/${ext.slice(1)}`);
+                await uploadSyncedLyricsIfAvailable(storage, audioUrl, storageKey);
                 const storedPath = storage.getPublicUrl(storageKey);
 
                 await pool.query(
@@ -450,7 +521,7 @@ router.get('/status/:jobId', authMiddleware, async (req: AuthenticatedRequest, r
                     aceStatus.result.keyScale || params.keyScale,
                     aceStatus.result.timeSignature || params.timeSignature,
                     JSON.stringify([]),
-                    JSON.stringify(params),
+                    JSON.stringify(songGenerationParams),
                   ]
                 );
 
@@ -476,7 +547,7 @@ router.get('/status/:jobId', authMiddleware, async (req: AuthenticatedRequest, r
                     aceStatus.result.keyScale || params.keyScale,
                     aceStatus.result.timeSignature || params.timeSignature,
                     JSON.stringify([]),
-                    JSON.stringify(params),
+                    JSON.stringify(songGenerationParams),
                   ]
                 );
                 localPaths.push(audioUrl);
@@ -598,7 +669,8 @@ router.get('/endpoints', authMiddleware, async (_req: AuthenticatedRequest, res:
 
 router.get('/models', async (_req, res: Response) => {
   try {
-    const ACESTEP_DIR = process.env.ACESTEP_PATH || path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../../ACE-Step-1.5');
+    // const ACESTEP_DIR = process.env.ACESTEP_PATH || path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../../ACE-Step-1.5');
+    const ACESTEP_DIR = resolveAceStepPath();
     const checkpointsDir = path.join(ACESTEP_DIR, 'checkpoints');
 
     // All known DiT models from Gradio's model_downloader.py registry:
@@ -668,7 +740,32 @@ router.get('/models', async (_req, res: Response) => {
       return a.name.localeCompare(b.name);
     });
 
-    res.json({ models });
+     // Scan for available VAE checkpoints
+    const vaeModels = [
+      { name: 'official', is_preloaded: true },
+      { name: 'scragvae', is_preloaded: existsSync(path.join(checkpointsDir, 'scragvae')) },
+    ];
+    try {
+      const { readdirSync } = await import('fs');
+      for (const entry of readdirSync(checkpointsDir)) {
+        if (!['vae', 'scragvae', 'Qwen3-Embedding-0.6B', 'acestep-5Hz-lm-0.6B', 'acestep-5Hz-lm-1.7B', 'acestep-5Hz-lm-4B'].includes(entry) && 
+            !entry.startsWith('acestep-v15-') &&
+            statSync(path.join(checkpointsDir, entry)).isDirectory()) {
+          const entryPath = path.join(checkpointsDir, entry);
+          if (existsSync(path.join(entryPath, 'diffusion_pytorch_model.safetensors')) || 
+              existsSync(path.join(entryPath, 'model.safetensors')) || 
+              existsSync(path.join(entryPath, 'pytorch_model.bin'))) {
+            if (!vaeModels.some(v => v.name === entry)) {
+              vaeModels.push({
+                name: entry,
+                is_preloaded: true
+              });
+            }
+          }
+        }
+      }
+    } catch { /* checkpoints dir may not exist */ }
+    res.json({ models, vaeModels });
   } catch (error) {
     console.error('Models error:', error);
     res.status(500).json({ error: (error as Error).message });
@@ -705,7 +802,8 @@ router.get('/health', async (_req, res: Response) => {
 router.get('/limits', async (_req, res: Response) => {
   try {
     const { spawn } = await import('child_process');
-    const ACESTEP_DIR = process.env.ACESTEP_PATH || path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../../ACE-Step-1.5');
+    // const ACESTEP_DIR = process.env.ACESTEP_PATH || path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../../ACE-Step-1.5');
+    const ACESTEP_DIR = resolveAceStepPath();
     const __filename = fileURLToPath(import.meta.url);
     const __dirname = path.dirname(__filename);
     const SCRIPTS_DIR = path.join(__dirname, '../../scripts');
@@ -836,7 +934,8 @@ router.post('/format', authMiddleware, async (req: AuthenticatedRequest, res: Re
 
     // Fallback: Python spawn (only reached when REST API is unreachable)
     const { spawn } = await import('child_process');
-    const ACESTEP_DIR = process.env.ACESTEP_PATH || path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../../ACE-Step-1.5');
+    // const ACESTEP_DIR = process.env.ACESTEP_PATH || path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../../ACE-Step-1.5');
+    const ACESTEP_DIR = resolveAceStepPath();
     const __filename = fileURLToPath(import.meta.url);
     const __dirname = path.dirname(__filename);
     const SCRIPTS_DIR = path.join(__dirname, '../../scripts');

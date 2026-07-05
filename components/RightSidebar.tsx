@@ -7,6 +7,7 @@ import { useI18n } from '../context/I18nContext';
 import { SongDropdownMenu } from './SongDropdownMenu';
 import { ShareModal } from './ShareModal';
 import { AlbumCover } from './AlbumCover';
+import { getAvatarUrl } from '../utils/avatar';
 
 interface RightSidebarProps {
     song: Song | null;
@@ -272,8 +273,8 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({ song, onClose, onOpe
                         </div>
 
                         <div className="flex items-center gap-3">
-                            <div className="w-8 h-8 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-xs font-bold text-white shadow-sm ring-2 ring-white dark:ring-black">
-                                {song.creator ? song.creator[0].toUpperCase() : 'A'}
+                            <div className="w-8 h-8 rounded-full bg-zinc-100 dark:bg-zinc-900 flex items-center justify-center text-xs font-bold text-white shadow-sm ring-2 ring-white dark:ring-black overflow-hidden">
+                                <img src={getAvatarUrl(song.creator_avatar, song.creator)} alt={song.creator || t('anonymous')} className="w-full h-full object-cover" />
                             </div>
                             <div className="flex flex-col">
                                 <span

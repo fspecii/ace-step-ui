@@ -1,6 +1,6 @@
 import React, { useRef, useEffect, useState, useCallback } from 'react';
 import { Song } from '../types';
-import { X, Play, Pause, Download, Wand2, Image as ImageIcon, Music, Video, Loader2, Palette, Layers, Zap, Type, Monitor, Aperture, Activity, Circle, Grid, Box, BarChart2, Waves, Disc, Upload, Plus, Trash2, Settings2, MousePointer2, Search, ExternalLink, Sun, Film, Minus } from 'lucide-react';
+import { X, Play, Pause, Download, Wand2, Image as ImageIcon, Music, Video, Loader2, Palette, Layers, Zap, Type, Monitor, Aperture, Activity, Circle, Grid, Box, BarChart2, Waves, Disc, Upload, Plus, Trash2, Settings2, MousePointer2, Search, ExternalLink, Sun, Film, Minus, Shuffle } from 'lucide-react';
 import { FFmpeg } from '@ffmpeg/ffmpeg';
 import { fetchFile, toBlobURL } from '@ffmpeg/util';
 import { useResponsive } from '../context/ResponsiveContext';
@@ -22,6 +22,12 @@ interface VisualizerConfig {
   secondaryColor: string;
   bgDim: number;
   particleCount: number;
+}
+
+interface ColorPreset {
+  name: string;
+  primary: string;
+  secondary: string;
 }
 
 interface EffectConfig {
@@ -92,6 +98,170 @@ const PRESETS: { id: PresetType; label: string; icon: React.ReactNode }[] = [
   { id: 'Minimal', label: 'Clean', icon: <Type size={16} /> },
 ];
 
+const COLOR_PRESETS: ColorPreset[] = [
+  { name: 'Neon Pink', primary: '#ec4899', secondary: '#8b5cf6' },
+  { name: 'Cyber Blue', primary: '#06b6d4', secondary: '#3b82f6' },
+  { name: 'Sunset', primary: '#f97316', secondary: '#eab308' },
+  { name: 'Matrix', primary: '#22c55e', secondary: '#10b981' },
+  { name: 'Fire', primary: '#ef4444', secondary: '#f97316' },
+  { name: 'Ocean', primary: '#0ea5e9', secondary: '#06b6d4' },
+  { name: 'Violet', primary: '#a855f7', secondary: '#ec4899' },
+  { name: 'Gold', primary: '#eab308', secondary: '#f59e0b' },
+  { name: 'Ice', primary: '#67e8f9', secondary: '#a5f3fc' },
+  { name: 'Mono', primary: '#ffffff', secondary: '#a1a1aa' },
+];
+
+function randomInt(min: number, max: number): number {
+  return Math.floor(Math.random() * (max - min + 1)) + min;
+}
+
+function pickRandom<T>(items: T[]): T {
+  return items[randomInt(0, items.length - 1)];
+}
+
+function hslToHex(h: number, s: number, l: number): string {
+  const saturation = s / 100;
+  const lightness = l / 100;
+  const chroma = (1 - Math.abs(2 * lightness - 1)) * saturation;
+  const huePrime = h / 60;
+  const x = chroma * (1 - Math.abs((huePrime % 2) - 1));
+  const m = lightness - chroma / 2;
+  let r = 0;
+  let g = 0;
+  let b = 0;
+
+  if (huePrime >= 0 && huePrime < 1) {
+    r = chroma; g = x; b = 0;
+  } else if (huePrime < 2) {
+    r = x; g = chroma; b = 0;
+  } else if (huePrime < 3) {
+    r = 0; g = chroma; b = x;
+  } else if (huePrime < 4) {
+    r = 0; g = x; b = chroma;
+  } else if (huePrime < 5) {
+    r = x; g = 0; b = chroma;
+  } else {
+    r = chroma; g = 0; b = x;
+  }
+
+  return [r, g, b]
+    .map(channel => Math.round((channel + m) * 255).toString(16).padStart(2, '0'))
+    .join('')
+    .replace(/^/, '#');
+}
+
+function hexToRgb(hex: string): { r: number; g: number; b: number } {
+  const value = hex.replace('#', '');
+  return {
+    r: parseInt(value.slice(0, 2), 16),
+    g: parseInt(value.slice(2, 4), 16),
+    b: parseInt(value.slice(4, 6), 16),
+  };
+}
+
+function colorDistance(a: string, b: string): number {
+  const first = hexToRgb(a);
+  const second = hexToRgb(b);
+  const r = first.r - second.r;
+  const g = first.g - second.g;
+  const blue = first.b - second.b;
+  return Math.sqrt(r * r + g * g + blue * blue);
+}
+
+function relativeLuminance(hex: string): number {
+  const { r, g, b } = hexToRgb(hex);
+  const channels = [r, g, b].map(value => {
+    const normalized = value / 255;
+    return normalized <= 0.03928
+      ? normalized / 12.92
+      : Math.pow((normalized + 0.055) / 1.055, 2.4);
+  });
+  return 0.2126 * channels[0] + 0.7152 * channels[1] + 0.0722 * channels[2];
+}
+
+function isPleasantColorPair(primary: string, secondary: string): boolean {
+  const primaryLum = relativeLuminance(primary);
+  const secondaryLum = relativeLuminance(secondary);
+  const distance = colorDistance(primary, secondary);
+  const averageLum = (primaryLum + secondaryLum) / 2;
+
+  return distance >= 42 && distance <= 245 && averageLum >= 0.16 && averageLum <= 0.72;
+}
+
+function colorPresetKey(preset: ColorPreset): string {
+  return `${preset.primary}-${preset.secondary}`;
+}
+
+function isDistinctFromPresets(candidate: ColorPreset, presets: ColorPreset[]): boolean {
+  return presets.every(preset => {
+    const sameDirectionDistance =
+      colorDistance(candidate.primary, preset.primary) +
+      colorDistance(candidate.secondary, preset.secondary);
+    const swappedDirectionDistance =
+      colorDistance(candidate.primary, preset.secondary) +
+      colorDistance(candidate.secondary, preset.primary);
+    return Math.min(sameDirectionDistance, swappedDirectionDistance) >= 145;
+  });
+}
+
+function createRandomColorPreset(index: number): ColorPreset {
+  const morandiFamilies = [
+    { name: 'Moss', hue: 118 },
+    { name: 'Sage', hue: 142 },
+    { name: 'Dust Rose', hue: 348 },
+    { name: 'Clay', hue: 18 },
+    { name: 'Mist Blue', hue: 204 },
+    { name: 'Mauve', hue: 284 },
+    { name: 'Cement', hue: 230 },
+    { name: 'Oat', hue: 44 },
+  ];
+  const vividFamilies = [
+    { name: 'RGB Red', hue: 0 },
+    { name: 'RGB Green', hue: 132 },
+    { name: 'RGB Blue', hue: 218 },
+    { name: 'Cyan', hue: 188 },
+    { name: 'Magenta', hue: 316 },
+    { name: 'Amber', hue: 38 },
+  ];
+
+  for (let attempt = 0; attempt < 20; attempt += 1) {
+    const useMorandi = Math.random() < 0.58;
+    const family = pickRandom(useMorandi ? morandiFamilies : vividFamilies);
+    const hueOffset = useMorandi
+      ? pickRandom([22, 32, 44, 56, 86, 128])
+      : pickRandom([30, 45, 60, 120, 180]);
+    const primaryHue = (family.hue + randomInt(-10, 10) + 360) % 360;
+    const secondaryHue = (primaryHue + hueOffset + randomInt(-8, 8) + 360) % 360;
+    const primary = useMorandi
+      ? hslToHex(primaryHue, randomInt(24, 42), randomInt(54, 68))
+      : hslToHex(primaryHue, randomInt(76, 94), randomInt(48, 60));
+    const secondary = useMorandi
+      ? hslToHex(secondaryHue, randomInt(22, 40), randomInt(52, 70))
+      : hslToHex(secondaryHue, randomInt(72, 92), randomInt(48, 62));
+
+    if (isPleasantColorPair(primary, secondary)) {
+      return {
+        name: `${family.name} ${String(index).padStart(2, '0')}`,
+        primary,
+        secondary,
+      };
+    }
+  }
+
+  const fallback = pickRandom([
+    { name: 'Soft Moss', primary: '#86a88f', secondary: '#d6a1aa' },
+    { name: 'RGB Glow', primary: '#00d26a', secondary: '#247cff' },
+    { name: 'Rose Cement', primary: '#c99aa3', secondary: '#9ba3ad' },
+    { name: 'Clean Signal', primary: '#ff2d55', secondary: '#00c2ff' },
+  ]);
+
+  return {
+    name: `${fallback.name} ${String(index).padStart(2, '0')}`,
+    primary: fallback.primary,
+    secondary: fallback.secondary,
+  };
+}
+
 function ColumnsIcon() {
   return (
     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -100,7 +270,352 @@ function ColumnsIcon() {
     </svg>
   );
 }
+interface LyricLine {
+  time: number;
+  endTime?: number;
+  text: string;
+}
 
+function vttTimeToSeconds(timeStr: string): number {
+  const parts = timeStr.trim().split(':');
+  if (parts.length === 3) {
+    const hours = parseInt(parts[0], 10);
+    const minutes = parseInt(parts[1], 10);
+    const secondsWithMs = parseFloat(parts[2]);
+    return hours * 3600 + minutes * 60 + secondsWithMs;
+  } else if (parts.length === 2) {
+    const minutes = parseInt(parts[0], 10);
+    const secondsWithMs = parseFloat(parts[1]);
+    return minutes * 60 + secondsWithMs;
+  }
+  return parseFloat(timeStr) || 0;
+}
+function formatSecondsToLrcTime(seconds: number): string {
+  if (seconds < 0) seconds = 0;
+  const mins = Math.floor(seconds / 60);
+  const secs = Math.floor(seconds % 60);
+  const ms = Math.floor((seconds % 1) * 100);
+  
+  const minStr = String(mins).padStart(2, '0');
+  const secStr = String(secs).padStart(2, '0');
+  const msStr = String(ms).padStart(2, '0');
+  
+  return `[${minStr}:${secStr}.${msStr}]`;
+}
+
+function cleanRenderableLyricText(text: string): string {
+  return text
+    .split('\n')
+    .map(line => line
+      .replace(/\[(?:intro|verse|pre[-\s]?chorus|chorus|bridge|outro|hook|refrain|interlude|instrumental|breakdown|drop|build|solo|spoken|final(?:\s+chorus)?|post[-\s]?chorus|prelude|ending|song\s+ends?)[^\]]*\]/gi, '')
+      .replace(/^(?:intro|verse|pre[-\s]?chorus|chorus|bridge|outro|hook|refrain|interlude|instrumental|breakdown|drop|build|solo|spoken|final(?:\s+chorus)?|post[-\s]?chorus|prelude|ending)\s*\d*\s*[:\-–—]?\s*/i, '')
+      .trim()
+    )
+    .filter(Boolean)
+    .join('\n');
+}
+
+function convertVttToLrc(vttText: string): string {
+  if (!vttText) return '';
+  const lines = vttText.split(/\r?\n/);
+  const cues: { startTime: number; endTime: number; lines: string[] }[] = [];
+  let currentCue: { startTime?: number; endTime?: number; lines: string[] } | null = null;
+  
+  const timeRangeRegex = /(\d{2}:\d{2}:\d{2}\.\d{3}|\d{2}:\d{2}\.\d{3})\s*-->\s*(\d{2}:\d{2}:\d{2}\.\d{3}|\d{2}:\d{2}\.\d{3})/;
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i].trim();
+    if (!line) {
+      if (currentCue && currentCue.startTime !== undefined && currentCue.endTime !== undefined) {
+        cues.push(currentCue as any);
+        currentCue = null;
+      }
+      continue;
+    }
+    if (line.startsWith('WEBVTT')) {
+      continue;
+    }
+    const match = timeRangeRegex.exec(line);
+    if (match) {
+      if (currentCue) {
+        if (currentCue.startTime !== undefined && currentCue.endTime !== undefined) {
+          cues.push(currentCue as any);
+        }
+        currentCue = null;
+      }
+      currentCue = {
+        startTime: vttTimeToSeconds(match[1]),
+        endTime: vttTimeToSeconds(match[2]),
+        lines: []
+      };
+    } else {
+      let isCueId = false;
+      if (!currentCue) {
+        let nextHasArrow = false;
+        for (let j = i + 1; j < lines.length; j++) {
+          const nextLine = lines[j].trim();
+          if (!nextLine) continue;
+          if (nextLine.includes('-->')) {
+            nextHasArrow = true;
+          }
+          break;
+        }
+        if (nextHasArrow) {
+          isCueId = true;
+        }
+      }
+      if (!isCueId) {
+        if (currentCue) {
+          currentCue.lines.push(line);
+        }
+      }
+    }
+  }
+  if (currentCue && currentCue.startTime !== undefined && currentCue.endTime !== undefined) {
+    cues.push(currentCue as any);
+  }
+  const lrcLines: string[] = [];
+  for (const cue of cues) {
+    const n = cue.lines.length;
+    if (n === 0) continue;
+    
+    const duration = cue.endTime - cue.startTime;
+    for (let idx = 0; idx < n; idx++) {
+      const lineText = cleanRenderableLyricText(cue.lines[idx]);
+      if (!lineText) continue;
+      let lineTime = cue.startTime;
+      if (n > 1) {
+        lineTime = cue.startTime + (idx * duration) / n;
+      }
+      lrcLines.push(`${formatSecondsToLrcTime(lineTime)} ${lineText}`);
+    }
+  }
+  return lrcLines.join('\n');
+}
+
+function parseVttToLyricLines(vttText: string): LyricLine[] {
+  if (!vttText) return [];
+  const lines = vttText.split(/\r?\n/);
+  const cues: { startTime: number; endTime: number; lines: string[] }[] = [];
+  let currentCue: { startTime?: number; endTime?: number; lines: string[] } | null = null;
+  const timeRangeRegex = /(\d{2}:\d{2}:\d{2}\.\d{3}|\d{2}:\d{2}\.\d{3})\s*-->\s*(\d{2}:\d{2}:\d{2}\.\d{3}|\d{2}:\d{2}\.\d{3})/;
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i].trim();
+    if (!line) {
+      if (currentCue?.startTime !== undefined && currentCue.endTime !== undefined) {
+        cues.push(currentCue as { startTime: number; endTime: number; lines: string[] });
+        currentCue = null;
+      }
+      continue;
+    }
+    if (line === 'WEBVTT' || line.startsWith('NOTE')) continue;
+
+    const match = timeRangeRegex.exec(line);
+    if (match) {
+      if (currentCue?.startTime !== undefined && currentCue.endTime !== undefined) {
+        cues.push(currentCue as { startTime: number; endTime: number; lines: string[] });
+      }
+      currentCue = {
+        startTime: vttTimeToSeconds(match[1]),
+        endTime: vttTimeToSeconds(match[2]),
+        lines: []
+      };
+      continue;
+    }
+
+    let nextHasArrow = false;
+    for (let j = i + 1; j < lines.length; j++) {
+      const nextLine = lines[j].trim();
+      if (!nextLine) continue;
+      nextHasArrow = nextLine.includes('-->');
+      break;
+    }
+    if (!currentCue && nextHasArrow) continue;
+
+    if (currentCue) {
+      currentCue.lines.push(line);
+    }
+  }
+
+  if (currentCue?.startTime !== undefined && currentCue.endTime !== undefined) {
+    cues.push(currentCue as { startTime: number; endTime: number; lines: string[] });
+  }
+
+  const lyricLines: LyricLine[] = [];
+  for (const cue of cues) {
+    const cleanedLines = cue.lines
+      .map(line => cleanRenderableLyricText(line))
+      .filter(Boolean);
+    if (cleanedLines.length === 0) continue;
+
+    const cueDuration = Math.max(0, cue.endTime - cue.startTime);
+    cleanedLines.forEach((text, idx) => {
+      const start = cleanedLines.length > 1
+        ? cue.startTime + (idx * cueDuration) / cleanedLines.length
+        : cue.startTime;
+      const end = cleanedLines.length > 1
+        ? cue.startTime + ((idx + 1) * cueDuration) / cleanedLines.length
+        : cue.endTime;
+      lyricLines.push({ time: start, endTime: end, text });
+    });
+  }
+
+  return lyricLines.sort((a, b) => a.time - b.time);
+}
+
+function mergeShortLyricLines(lines: LyricLine[]): LyricLine[] {
+  const sorted = [...lines].sort((a, b) => a.time - b.time);
+  const merged: LyricLine[] = [];
+  const minDisplayDuration = 2.0;
+  let i = 0;
+
+  while (i < sorted.length) {
+    const current = sorted[i];
+    let text = current.text;
+    let endTime = current.endTime;
+    let nextIdx = i + 1;
+
+    while (nextIdx < sorted.length && sorted[nextIdx].time - current.time < minDisplayDuration) {
+      text += `\n${sorted[nextIdx].text}`;
+      endTime = sorted[nextIdx].endTime;
+      nextIdx++;
+    }
+
+    merged.push({ time: current.time, endTime, text });
+    i = nextIdx;
+  }
+
+  return merged.map((line, idx) => ({
+    ...line,
+    endTime: line.endTime ?? merged[idx + 1]?.time
+  }));
+}
+// Parses standard [mm:ss.xx] or [mm:ss.xxx] LRC text, converting VTT automatically if passed
+function parseLrc(lrcText: string): LyricLine[] {
+  if (!lrcText) return [];
+  const cleanText = lrcText.trim();
+  if (cleanText.startsWith('WEBVTT') || cleanText.includes('-->')) {
+    return parseVttToLyricLines(lrcText);
+  }
+  const lines = lrcText.split('\n');
+  const result: LyricLine[] = [];
+  const timeRegex = /\[(\d{2}):(\d{2})\.(\d{2,3})\]/;
+  for (const line of lines) {
+    const cleanLine = line.trim();
+    if (!cleanLine) continue;
+    
+    const match = timeRegex.exec(cleanLine);
+    if (match) {
+      const minutes = parseInt(match[1], 10);
+      const seconds = parseInt(match[2], 10);
+      const msStr = match[3];
+      const milliseconds = parseInt(msStr, 10);
+      const msDivisor = Math.pow(10, msStr.length);
+      const time = minutes * 60 + seconds + milliseconds / msDivisor;
+      const text = cleanRenderableLyricText(cleanLine.replace(/\[\d{2}:\d{2}\.\d{2,3}\]/g, '').trim());
+      if (text) result.push({ time, text });
+    }
+  }
+  return mergeShortLyricLines(result);
+}
+// Generates a mock LRC with lines spaced evenly across the duration
+function generateMockLrc(rawLyrics: string | undefined | null, durationSec = 60): string {
+  if (!rawLyrics) {
+    return `[00:00.00] Instrumentals`;
+  }
+  // Strip bracket headers like [Verse 1], [Chorus]
+  const lines = rawLyrics
+    .split('\n')
+    .map(line => line.trim())
+    .filter(line => line.length > 0 && !line.startsWith('[') && !line.endsWith(']'));
+  if (lines.length === 0) {
+   return `[00:00.00] Instrumentals`;
+  }
+  const interval = durationSec / (lines.length + 1);
+  return lines.map((line, idx) => {
+    const timeSec = (idx + 1) * interval;
+    const mins = Math.floor(timeSec / 60);
+    const secs = Math.floor(timeSec % 60);
+    const ms = Math.floor((timeSec % 1) * 100);
+    
+    const minStr = String(mins).padStart(2, '0');
+    const secStr = String(secs).padStart(2, '0');
+    const msStr = String(ms).padStart(2, '0');
+    
+    return `[${minStr}:${secStr}.${msStr}] ${line}`;
+  }).join('\n');
+}
+// Get the active lyric text based on time
+function getActiveLyricText(currentTime: number, parsedLyrics: LyricLine[], defaultText: string): string {
+  if (parsedLyrics.length === 0) return defaultText;
+  const active = parsedLyrics.find((line, idx) => {
+    const nextLine = parsedLyrics[idx + 1];
+    const endTime = line.endTime ?? nextLine?.time;
+    return currentTime >= line.time && (!endTime || currentTime < endTime);
+  });
+  return active ? active.text : '';
+}
+// Parse duration string (like "03:45" or raw seconds) to seconds
+function parseDurationToSeconds(durationStr: string | undefined | null): number {
+  if (!durationStr) return 60;
+  if (durationStr.includes(':')) {
+    const parts = durationStr.split(':');
+    if (parts.length === 2) {
+      return parseInt(parts[0], 10) * 60 + parseFloat(parts[1]);
+    }
+  }
+  const parsed = parseFloat(durationStr);
+  return isNaN(parsed) ? 60 : parsed;
+}
+// Shift all timestamps in standard [mm:ss.xx] LRC text by offsetSec
+function shiftLrcTimestamps(lrcText: string, offsetSec: number): string {
+  if (!lrcText) return '';
+  const timeRegex = /\[(\d{2}):(\d{2})\.(\d{2,3})\]/g;
+  return lrcText.replace(timeRegex, (match, minStr, secStr, csStr) => {
+    const minutes = parseInt(minStr, 10);
+    const seconds = parseInt(secStr, 10);
+    const cs = parseInt(csStr, 10);
+    const timeFactor = csStr.length === 2 ? 100 : 1000;
+    
+    let totalSec = minutes * 60 + seconds + cs / timeFactor;
+    totalSec = Math.max(0, totalSec + offsetSec);
+    
+    const newMin = Math.floor(totalSec / 60);
+    const newSec = Math.floor(totalSec % 60);
+    const newMs = Math.floor((totalSec % 1) * 100);
+    
+    const newMinStr = String(newMin).padStart(2, '0');
+    const newSecStr = String(newSec).padStart(2, '0');
+    const newMsStr = String(newMs).padStart(2, '0');
+    
+    return `[${newMinStr}:${newSecStr}.${newMsStr}]`;
+  });
+}
+
+function getProxiedVideoUrl(url: string): string {
+  if (!url || url.startsWith('blob:') || url.startsWith('data:') || url.startsWith('/')) return url;
+  try {
+    const parsed = new URL(url, window.location.href);
+    if (parsed.origin === window.location.origin) return url;
+  } catch {
+    return url;
+  }
+  return `/api/proxy/video?url=${encodeURIComponent(url)}`;
+}
+
+function drawCenteredMultilineText(
+  ctx: CanvasRenderingContext2D,
+  text: string,
+  x: number,
+  y: number,
+  lineHeight: number
+): void {
+  const lines = text.split('\n').map(line => line.trim()).filter(Boolean);
+  const startY = y - ((lines.length - 1) * lineHeight) / 2;
+  lines.forEach((line, idx) => {
+    ctx.fillText(line, x, startY + idx * lineHeight);
+  });
+}
 export const VideoGeneratorModal: React.FC<VideoGeneratorModalProps> = ({ isOpen, onClose, song }) => {
   const { isMobile } = useResponsive();
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -111,6 +626,7 @@ export const VideoGeneratorModal: React.FC<VideoGeneratorModalProps> = ({ isOpen
   const bgImageRef = useRef<HTMLImageElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const videoFileInputRef = useRef<HTMLInputElement>(null);
+  const recentColorPresetKeysRef = useRef<Set<string>>(new Set());
 
   // FFmpeg Refs
   const ffmpegRef = useRef<FFmpeg | null>(null);
@@ -139,6 +655,9 @@ export const VideoGeneratorModal: React.FC<VideoGeneratorModalProps> = ({ isOpen
   const [pexelsPhotos, setPexelsPhotos] = useState<PexelsPhoto[]>([]);
   const [pexelsVideos, setPexelsVideos] = useState<PexelsVideo[]>([]);
   const [pexelsLoading, setPexelsLoading] = useState(false);
+  const [pexelsLoadingMore, setPexelsLoadingMore] = useState(false);
+  const [pexelsPage, setPexelsPage] = useState(1);
+  const [pexelsHasMore, setPexelsHasMore] = useState(false);
   const [pexelsApiKey, setPexelsApiKey] = useState<string>(() => localStorage.getItem('pexels_api_key') || '');
   const [showPexelsApiKeyInput, setShowPexelsApiKeyInput] = useState(false);
   const [pexelsError, setPexelsError] = useState<string | null>(null);
@@ -157,6 +676,7 @@ export const VideoGeneratorModal: React.FC<VideoGeneratorModalProps> = ({ isOpen
     bgDim: 0.6,
     particleCount: 50
   });
+  const [visibleColorPresets, setVisibleColorPresets] = useState<ColorPreset[]>(COLOR_PRESETS);
 
   const [effects, setEffects] = useState<EffectConfig>({
     shake: true,
@@ -190,15 +710,131 @@ export const VideoGeneratorModal: React.FC<VideoGeneratorModalProps> = ({ isOpen
     letterbox: 0.5
   });
 
+  const randomizeColorPresets = useCallback(() => {
+    const nextPresets: ColorPreset[] = [];
+    const currentBatchKeys = new Set<string>();
+    const recentKeys = recentColorPresetKeysRef.current;
+
+    for (let idx = 0; idx < COLOR_PRESETS.length; idx += 1) {
+      let selected: ColorPreset | null = null;
+
+      for (let attempt = 0; attempt < 36; attempt += 1) {
+        const candidate = createRandomColorPreset(idx + 1);
+        const key = colorPresetKey(candidate);
+        if (
+          !currentBatchKeys.has(key) &&
+          !recentKeys.has(key) &&
+          isDistinctFromPresets(candidate, nextPresets)
+        ) {
+          selected = candidate;
+          break;
+        }
+      }
+
+      if (!selected) {
+        for (let attempt = 0; attempt < 24; attempt += 1) {
+          const candidate = createRandomColorPreset(idx + 1);
+          const key = colorPresetKey(candidate);
+          if (!currentBatchKeys.has(key) && isDistinctFromPresets(candidate, nextPresets)) {
+            selected = candidate;
+            break;
+          }
+        }
+      }
+
+      if (selected) {
+        const key = colorPresetKey(selected);
+        currentBatchKeys.add(key);
+        nextPresets.push(selected);
+      }
+    }
+
+    currentBatchKeys.forEach(key => recentKeys.add(key));
+    while (recentKeys.size > COLOR_PRESETS.length * 4) {
+      const firstKey = recentKeys.values().next().value;
+      if (!firstKey) break;
+      recentKeys.delete(firstKey);
+    }
+
+    setVisibleColorPresets(nextPresets);
+  }, []);
+
   // Text Layers State
   const [textLayers, setTextLayers] = useState<TextLayer[]>([]);
+    // Synchronized LRC Subtitles
+  const [lrcText, setLrcText] = useState<string>('');
+  const [originalLrcText, setOriginalLrcText] = useState<string>('');
+  const [parsedLyrics, setParsedLyrics] = useState<LyricLine[]>([]);
+  const parsedLyricsRef = useRef<LyricLine[]>([]);
+  const [timeOffset, setTimeOffset] = useState<number>(0);
+  const shouldUseSyncedLyrics = Boolean(song?.generationParams?.getLrc);
+  useEffect(() => {
+    parsedLyricsRef.current = parsedLyrics;
+  }, [parsedLyrics]);
+  const handleLrcChange = (newVal: string) => {
+    const cleanText = newVal.trim();
+    if (cleanText.startsWith('WEBVTT') || cleanText.includes('-->')) {
+      const converted = convertVttToLrc(newVal);
+      setLrcText(converted);
+      setParsedLyrics(parseLrc(newVal));
+    } else {
+      setLrcText(newVal);
+      setParsedLyrics(parseLrc(newVal));
+    }
+  };
+  // Load actual LRC file on load.
+  useEffect(() => {
+    if (!song) return;
 
+    if (!shouldUseSyncedLyrics) {
+      setLrcText('');
+      setOriginalLrcText('');
+      setParsedLyrics([]);
+      return;
+    }
+    
+    if (song.audioUrl) {
+      // Attempt to load .lrc file next to the audio file
+      const lrcUrl = song.audioUrl.replace(/\.[^/.]+$/, '.lrc');
+      console.log('[LyricsLoader] Attempting to fetch lyric file from:', lrcUrl);
+      fetch(lrcUrl)
+        .then(res => {
+           console.log('[LyricsLoader] Fetch response status:', res.status, res.statusText);
+          if (res.ok) return res.text();
+          throw new Error(`Fetch failed with status ${res.status}: ${res.statusText}`);
+        })
+        .then(text => {
+          console.log('[LyricsLoader] Successfully retrieved lyrics file contents. Length:', text.length);
+          const cleanText = text.trim();
+          if (cleanText.startsWith('WEBVTT') || cleanText.includes('-->')) {
+             console.log('[LyricsLoader] Detected WebVTT format, converting...');
+            const converted = convertVttToLrc(text);
+            console.log('[LyricsLoader] Conversion complete. LRC preview:', converted.substring(0, 100));
+            setLrcText(converted);
+            setOriginalLrcText(converted);
+            setParsedLyrics(parseLrc(text));
+          } else {
+             console.log('[LyricsLoader] Detected standard LRC format');
+            setLrcText(text);
+            setOriginalLrcText(text);
+            setParsedLyrics(parseLrc(text));
+          }
+        })
+        .catch(err => {
+          console.error('[LyricsLoader] Error loading lyric file:', err);
+          console.log('[LyricsLoader] No synced LRC available, falling back to text layers');
+          setLrcText('');
+          setOriginalLrcText('');
+          setParsedLyrics([]);
+        });
+    }
+  }, [song, shouldUseSyncedLyrics]);
   // Init default text on load
   useEffect(() => {
     if (song) {
         setTextLayers([
-            { id: '1', text: song.title, x: 50, y: 85, size: 52, color: '#ffffff', font: 'Inter' },
-            { id: '2', text: song.style.toUpperCase(), x: 50, y: 92, size: 24, color: '#3b82f6', font: 'Inter' }
+            { id: '1', text: song.title || '', x: 50, y: 85, size: 52, color: '#ffffff', font: 'Inter' },
+            { id: '2', text: song.style?.toUpperCase() || '', x: 50, y: 92, size: 24, color: '#3b82f6', font: 'Inter' }
         ]);
     }
   }, [song]);
@@ -288,7 +924,7 @@ export const VideoGeneratorModal: React.FC<VideoGeneratorModalProps> = ({ isOpen
 
     const video = document.createElement('video');
     video.crossOrigin = 'anonymous';
-    video.src = videoUrl;
+    video.src = getProxiedVideoUrl(videoUrl);
     video.loop = true;
     video.muted = true;
     video.playsInline = true;
@@ -303,6 +939,7 @@ export const VideoGeneratorModal: React.FC<VideoGeneratorModalProps> = ({ isOpen
       console.error('Failed to load video:', videoUrl);
       bgVideoRef.current = null;
     };
+    video.load();
 
     return () => {
       video.pause();
@@ -345,6 +982,8 @@ export const VideoGeneratorModal: React.FC<VideoGeneratorModalProps> = ({ isOpen
     setIsExporting(false);
     setExportProgress(0);
     setExportStage('idle');
+    setVisibleColorPresets(COLOR_PRESETS);
+    recentColorPresetKeysRef.current.clear();
 
     // Audio Setup
     const audio = new Audio();
@@ -502,7 +1141,7 @@ export const VideoGeneratorModal: React.FC<VideoGeneratorModalProps> = ({ isOpen
     if (backgroundType === 'video' && videoUrl) {
       bgVideo = document.createElement('video');
       bgVideo.crossOrigin = 'anonymous';
-      bgVideo.src = videoUrl;
+      bgVideo.src = getProxiedVideoUrl(videoUrl);
       bgVideo.muted = true;
       bgVideo.playsInline = true;
       await new Promise<void>((resolve) => {
@@ -716,14 +1355,38 @@ export const VideoGeneratorModal: React.FC<VideoGeneratorModalProps> = ({ isOpen
       ctx.shadowColor = 'black';
       ctx.textAlign = 'center';
 
-      currentTexts.forEach(layer => {
-        ctx.fillStyle = layer.color;
-        const dynamicSize = layer.id === '1' && currentConfig.preset === 'Minimal' ? layer.size * pulse : layer.size;
-        ctx.font = `bold ${dynamicSize}px ${layer.font}, sans-serif`;
-        const xPos = (layer.x / 100) * width;
-        const yPos = (layer.y / 100) * height;
-        ctx.fillText(layer.text, xPos, yPos);
-      });
+      // currentTexts.forEach(layer => {
+      //   ctx.fillStyle = layer.color;
+      //   const dynamicSize = layer.id === '1' && currentConfig.preset === 'Minimal' ? layer.size * pulse : layer.size;
+      //   ctx.font = `bold ${dynamicSize}px ${layer.font}, sans-serif`;
+      //   const xPos = (layer.x / 100) * width;
+      //   const yPos = (layer.y / 100) * height;
+      //   ctx.fillText(layer.text, xPos, yPos);
+      // });
+       // Draw Synchronized LRC Lyrics instead of static text layers
+      const activeText = shouldUseSyncedLyrics ? getActiveLyricText(time, parsedLyricsRef.current, '') : '';
+      if (activeText) {
+        ctx.fillStyle = '#ffffff';
+        const lyricSize = 44;
+        ctx.font = `bold ${lyricSize}px Inter, sans-serif`;
+        
+        ctx.shadowBlur = 12;
+        ctx.shadowColor = 'rgba(0, 0, 0, 0.8)';
+        
+        const xPos = width / 2;
+        const yPos = 0.88 * height; // Bottom center
+        
+        drawCenteredMultilineText(ctx, activeText, xPos, yPos, lyricSize * 1.15);
+        } else if (!shouldUseSyncedLyrics || parsedLyricsRef.current.length === 0) {
+        // Fallback: draw static text layers if no lyrics are active or empty
+        currentTexts.forEach(layer => {
+          ctx.fillStyle = layer.color;
+          ctx.shadowBlur = 10;
+          ctx.shadowColor = 'black';
+          ctx.font = `bold ${layer.size * (layer.id === '1' ? pulse : 1)}px ${layer.font}, sans-serif`;
+          ctx.fillText(layer.text, (layer.x / 100) * width, (layer.y / 100) * height);
+        });
+      }
 
       ctx.restore();
 
@@ -945,13 +1608,18 @@ export const VideoGeneratorModal: React.FC<VideoGeneratorModalProps> = ({ isOpen
     }
   };
 
-  const searchPexels = async (query: string, type: 'photos' | 'videos') => {
-    setPexelsLoading(true);
+  const searchPexels = async (query: string, type: 'photos' | 'videos', page = 1, append = false) => {
+    if (append) {
+      setPexelsLoadingMore(true);
+    } else {
+      setPexelsLoading(true);
+    }
     setPexelsError(null);
     try {
+      const perPage = type === 'photos' ? 30 : 24;
       const endpoint = type === 'photos'
-        ? `/api/pexels/photos?query=${encodeURIComponent(query)}`
-        : `/api/pexels/videos?query=${encodeURIComponent(query)}`;
+        ? `/api/pexels/photos?query=${encodeURIComponent(query)}&page=${page}&per_page=${perPage}`
+        : `/api/pexels/videos?query=${encodeURIComponent(query)}&page=${page}&per_page=${perPage}`;
 
       const headers: HeadersInit = {};
       if (pexelsApiKey) {
@@ -972,16 +1640,27 @@ export const VideoGeneratorModal: React.FC<VideoGeneratorModalProps> = ({ isOpen
       }
 
       if (type === 'photos') {
-        setPexelsPhotos(data.photos || []);
+        const nextPhotos = data.photos || [];
+        setPexelsPhotos(prev => append ? [...prev, ...nextPhotos] : nextPhotos);
+        setPexelsHasMore(Boolean(data.next_page) || nextPhotos.length >= perPage);
       } else {
-        setPexelsVideos(data.videos || []);
+        const nextVideos = data.videos || [];
+        setPexelsVideos(prev => append ? [...prev, ...nextVideos] : nextVideos);
+        setPexelsHasMore(Boolean(data.next_page) || nextVideos.length >= perPage);
       }
+      setPexelsPage(page);
     } catch (error) {
       console.error('Pexels search failed:', error);
       setPexelsError('Search failed. Please try again.');
     } finally {
       setPexelsLoading(false);
+      setPexelsLoadingMore(false);
     }
+  };
+
+  const loadMorePexels = () => {
+    if (pexelsLoading || pexelsLoadingMore || !pexelsHasMore) return;
+    searchPexels(pexelsQuery, pexelsTab, pexelsPage + 1, true);
   };
 
   const savePexelsApiKey = (key: string) => {
@@ -991,7 +1670,7 @@ export const VideoGeneratorModal: React.FC<VideoGeneratorModalProps> = ({ isOpen
     setPexelsError(null);
     // Retry search with new key
     if (key) {
-      searchPexels(pexelsQuery, pexelsTab);
+      searchPexels(pexelsQuery, pexelsTab, 1, false);
     }
   };
 
@@ -1011,7 +1690,7 @@ export const VideoGeneratorModal: React.FC<VideoGeneratorModalProps> = ({ isOpen
     const sdFile = video.video_files.find(f => f.quality === 'sd');
     const videoFile = hdFile || sdFile || video.video_files[0];
     if (videoFile) {
-      setVideoUrl(videoFile.link);
+      setVideoUrl(getProxiedVideoUrl(videoFile.link));
       setBackgroundType('video');
       setShowPexelsBrowser(false);
     }
@@ -1020,11 +1699,13 @@ export const VideoGeneratorModal: React.FC<VideoGeneratorModalProps> = ({ isOpen
   const openPexelsBrowser = (target: 'background' | 'albumArt' = 'background', tab: 'photos' | 'videos' = 'photos') => {
     setPexelsTarget(target);
     setPexelsTab(target === 'albumArt' ? 'photos' : tab); // Album art is always photos
+    setPexelsQuery('');
+    setPexelsPhotos([]);
+    setPexelsVideos([]);
+    setPexelsPage(1);
+    setPexelsHasMore(false);
+    setPexelsError(null);
     setShowPexelsBrowser(true);
-    const searchTab = target === 'albumArt' ? 'photos' : tab;
-    if ((searchTab === 'photos' && pexelsPhotos.length === 0) || (searchTab === 'videos' && pexelsVideos.length === 0)) {
-      searchPexels(pexelsQuery, searchTab);
-    }
   };
 
   const handleAlbumArtUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -1173,22 +1854,44 @@ export const VideoGeneratorModal: React.FC<VideoGeneratorModalProps> = ({ isOpen
         ctx.imageSmoothingEnabled = true;
     }
 
-    // --- 3. CUSTOM TEXT LAYERS ---
+    // --- 3. CUSTOM TEXT LAYERS (DYNAMIC SUBTITLES) ---
     ctx.shadowBlur = 10;
     ctx.shadowColor = 'black';
     ctx.textAlign = 'center';
 
-    currentTexts.forEach(layer => {
-        ctx.fillStyle = layer.color;
-        // Adjust font size by pulse for title-like layers if needed, here we do static or slight pulse
-        const dynamicSize = layer.id === '1' && currentConfig.preset === 'Minimal' ? layer.size * pulse : layer.size;
-        ctx.font = `bold ${dynamicSize}px ${layer.font}, sans-serif`;
+    // currentTexts.forEach(layer => {
+    //     ctx.fillStyle = layer.color;
+    //     // Adjust font size by pulse for title-like layers if needed, here we do static or slight pulse
+    //     const dynamicSize = layer.id === '1' && currentConfig.preset === 'Minimal' ? layer.size * pulse : layer.size;
+    //     ctx.font = `bold ${dynamicSize}px ${layer.font}, sans-serif`;
         
-        const xPos = (layer.x / 100) * width;
-        const yPos = (layer.y / 100) * height;
+    //     const xPos = (layer.x / 100) * width;
+    //     const yPos = (layer.y / 100) * height;
         
-        ctx.fillText(layer.text, xPos, yPos);
-    });
+    //     ctx.fillText(layer.text, xPos, yPos);
+    // });
+    const currentTime = audioRef.current ? audioRef.current.currentTime : 0;
+    const activeText = shouldUseSyncedLyrics ? getActiveLyricText(currentTime, parsedLyricsRef.current, '') : '';
+    if (activeText) {
+        ctx.fillStyle = '#ffffff';
+        const lyricSize = 44;
+        ctx.font = `bold ${lyricSize}px Inter, sans-serif`;
+        ctx.shadowBlur = 12;
+        ctx.shadowColor = 'rgba(0, 0, 0, 0.8)';
+        const xPos = width / 2;
+        const yPos = 0.88 * height; // Bottom center
+        
+        drawCenteredMultilineText(ctx, activeText, xPos, yPos, lyricSize * 1.15);
+        } else if (!shouldUseSyncedLyrics || parsedLyricsRef.current.length === 0) {
+        // Fallback: draw static text layers if no lyrics are active or empty
+        currentTexts.forEach(layer => {
+            ctx.fillStyle = layer.color;
+            ctx.shadowBlur = 10;
+            ctx.shadowColor = 'black';
+            ctx.font = `bold ${layer.size * (layer.id === '1' ? pulse : 1)}px ${layer.font}, sans-serif`;
+            ctx.fillText(layer.text, (layer.x / 100) * width, (layer.y / 100) * height);
+        });
+    }
 
     ctx.restore();
 
@@ -1759,7 +2462,8 @@ export const VideoGeneratorModal: React.FC<VideoGeneratorModalProps> = ({ isOpen
                 {[
                     { id: 'presets', label: 'Presets', icon: <Grid size={14} /> },
                     { id: 'style', label: 'Style', icon: <Palette size={14} /> },
-                    { id: 'text', label: 'Text', icon: <Type size={14} /> },
+                    // { id: 'text', label: 'Text', icon: <Type size={14} /> },
+                    { id: 'text', label: shouldUseSyncedLyrics ? 'Lyrics' : 'Text', icon: <Type size={14} /> },
                     { id: 'effects', label: 'FX', icon: <Zap size={14} /> }
                 ].map(tab => (
                     <button 
@@ -1912,20 +2616,20 @@ export const VideoGeneratorModal: React.FC<VideoGeneratorModalProps> = ({ isOpen
 
                          {/* Colors */}
                          <div className="space-y-3">
-                             <label className="text-xs font-bold text-zinc-500 uppercase">Color Presets</label>
+                             <div className="flex items-center justify-between">
+                                 <label className="text-xs font-bold text-zinc-500 uppercase">Color Presets</label>
+                                 <button
+                                     type="button"
+                                     onClick={randomizeColorPresets}
+                                     className="h-7 w-7 rounded-lg border border-white/10 bg-white/5 text-zinc-400 hover:bg-white/10 hover:text-white transition-colors flex items-center justify-center"
+                                     title="Generate random color presets"
+                                     aria-label="Generate random color presets"
+                                 >
+                                     <Shuffle size={13} />
+                                 </button>
+                             </div>
                              <div className="grid grid-cols-5 gap-2">
-                                 {[
-                                     { name: 'Neon Pink', primary: '#ec4899', secondary: '#8b5cf6' },
-                                     { name: 'Cyber Blue', primary: '#06b6d4', secondary: '#3b82f6' },
-                                     { name: 'Sunset', primary: '#f97316', secondary: '#eab308' },
-                                     { name: 'Matrix', primary: '#22c55e', secondary: '#10b981' },
-                                     { name: 'Fire', primary: '#ef4444', secondary: '#f97316' },
-                                     { name: 'Ocean', primary: '#0ea5e9', secondary: '#06b6d4' },
-                                     { name: 'Violet', primary: '#a855f7', secondary: '#ec4899' },
-                                     { name: 'Gold', primary: '#eab308', secondary: '#f59e0b' },
-                                     { name: 'Ice', primary: '#67e8f9', secondary: '#a5f3fc' },
-                                     { name: 'Mono', primary: '#ffffff', secondary: '#a1a1aa' },
-                                 ].map((preset) => (
+                                 {visibleColorPresets.map((preset) => (
                                      <button
                                          key={preset.name}
                                          onClick={() => setConfig({...config, primaryColor: preset.primary, secondaryColor: preset.secondary})}
@@ -2031,15 +2735,128 @@ export const VideoGeneratorModal: React.FC<VideoGeneratorModalProps> = ({ isOpen
 
                 {/* TEXT TAB */}
                 {activeTab === 'text' && (
-                    <div className="space-y-4">
-                        <button 
+                    // <div className="space-y-4">
+                    //     <button 
+                    //         onClick={addTextLayer}
+                    //         className="w-full py-2 bg-pink-600 text-white rounded-lg flex items-center justify-center gap-2 text-xs font-bold hover:bg-pink-700"
+                       <div className="space-y-4 flex flex-col">
+                        {shouldUseSyncedLyrics ? (
+                          <>
+                        <div className="space-y-1">
+                            <label className="text-xs font-bold text-zinc-400 uppercase">Synchronized LRC Lyrics</label>
+                            <p className="text-[11px] text-zinc-500">
+                                Edit LRC timing in <code className="text-pink-500 font-mono">[mm:ss.xx]</code> format. Subtitles sync automatically in real time and are embedded in the output.
+                            </p>
+                        </div>
+                        
+                        <div className="w-full">
+                            <textarea
+                                value={lrcText}
+                                onChange={(e) => handleLrcChange(e.target.value)}
+                                className="w-full bg-black/40 border border-white/5 rounded-xl p-3 text-xs font-mono text-white focus:outline-none focus:border-pink-500 resize-y custom-scrollbar min-h-[250px]"
+                                placeholder="[00:00.00] Lyric line 1..."
+                            />
+                        </div>
+                        {/* Shift Timestamps Tool */}
+                        <div className="bg-black/20 p-3 rounded-lg border border-white/5 flex items-center justify-between gap-3">
+                            <div className="flex flex-col">
+                                <span className="text-[11px] text-zinc-400 font-bold">Shift Timestamps</span>
+                                <span className="text-[9px] text-zinc-500 flex items-center gap-1">
+                                    Offset all lines (e.g. <span className="text-pink-500 font-semibold">+17</span> or <span className="text-pink-500 font-semibold">-5</span> sec)
+                                </span>
+                            </div>
+                            <div className="flex items-center gap-2">
+                                <input
+                                    type="number"
+                                    step="0.1"
+                                    value={timeOffset}
+                                    onChange={(e) => setTimeOffset(parseFloat(e.target.value) || 0)}
+                                    className="w-16 bg-zinc-800 rounded px-2 py-1 text-xs text-white border border-white/5 text-center focus:outline-none focus:border-pink-500"
+                                    placeholder="Secs"
+                                />
+                                <button
+                                    onClick={() => {
+                                        if (timeOffset !== 0) {
+                                            const shifted = shiftLrcTimestamps(lrcText, timeOffset);
+                                            handleLrcChange(shifted);
+                                            setTimeOffset(0);
+                                        }
+                                    }}
+                                    className="px-3 py-1 bg-pink-600 hover:bg-pink-700 text-white rounded text-xs font-bold transition-colors"
+                                >
+                                    Apply
+                                </button>
+                            </div>
+                        </div>
+                        <button
+                            onClick={() => {
+                                if (originalLrcText) {
+                                  handleLrcChange(originalLrcText);
+                                }
+                            }}
+                            disabled={!originalLrcText}
+                            className={`w-full py-2 border border-white/5 rounded-lg text-xs font-bold transition-colors ${
+                              originalLrcText
+                                ? 'bg-zinc-800 text-zinc-200 hover:bg-zinc-700'
+                                : 'bg-zinc-900/60 text-zinc-600 cursor-not-allowed'
+                            }`}
+                        >
+                            {/* <Plus size={14} /> Add Text Layer */}
+                            Reset to Original LRC
+                        </button>
+                          </>
+                        ) : (
+                          <>
+                        <button
                             onClick={addTextLayer}
                             className="w-full py-2 bg-pink-600 text-white rounded-lg flex items-center justify-center gap-2 text-xs font-bold hover:bg-pink-700"
                         >
                             <Plus size={14} /> Add Text Layer
                         </button>
-                        
+
                         <div className="space-y-3">
+                            {textLayers.map((layer, index) => (
+                                <div key={layer.id} className="bg-black/20 p-3 rounded-lg border border-white/5 space-y-3">
+                                    <div className="flex items-center justify-between">
+                                        <span className="text-xs font-bold text-zinc-500">Layer {index + 1}</span>
+                                        <button onClick={() => removeTextLayer(layer.id)} className="text-zinc-500 hover:text-red-500">
+                                            <Trash2 size={14} />
+                                        </button>
+                                    </div>
+                                    <input
+                                        type="text"
+                                        value={layer.text}
+                                        onChange={(e) => updateTextLayer(layer.id, { text: e.target.value })}
+                                        className="w-full bg-zinc-800 rounded px-2 py-1 text-xs text-white border border-white/5"
+                                        placeholder="Text content"
+                                    />
+                                    <div className="grid grid-cols-2 gap-2">
+                                        <div>
+                                            <label className="text-[10px] text-zinc-500 block mb-1">X Position</label>
+                                            <input type="range" min="0" max="100" value={layer.x} onChange={(e) => updateTextLayer(layer.id, { x: parseInt(e.target.value) })} className="w-full accent-pink-500 h-1 bg-zinc-700 rounded-lg appearance-none" />
+                                        </div>
+                                        <div>
+                                            <label className="text-[10px] text-zinc-500 block mb-1">Y Position</label>
+                                            <input type="range" min="0" max="100" value={layer.y} onChange={(e) => updateTextLayer(layer.id, { y: parseInt(e.target.value) })} className="w-full accent-pink-500 h-1 bg-zinc-700 rounded-lg appearance-none" />
+                                        </div>
+                                    </div>
+                                    <div className="flex gap-2">
+                                        <div className="flex-1">
+                                            <label className="text-[10px] text-zinc-500 block mb-1">Size</label>
+                                            <input type="number" value={layer.size} onChange={(e) => updateTextLayer(layer.id, { size: parseInt(e.target.value) })} className="w-full bg-zinc-800 rounded px-2 py-1 text-xs text-white border border-white/5" />
+                                        </div>
+                                        <div>
+                                            <label className="text-[10px] text-zinc-500 block mb-1">Color</label>
+                                            <input type="color" value={layer.color} onChange={(e) => updateTextLayer(layer.id, { color: e.target.value })} className="w-8 h-6 rounded cursor-pointer border-none bg-transparent" />
+                                        </div>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                          </>
+                        )}
+                        
+                        {/* <div className="space-y-3">
                             {textLayers.map((layer, index) => (
                                 <div key={layer.id} className="bg-black/20 p-3 rounded-lg border border-white/5 space-y-3">
                                     <div className="flex items-center justify-between">
@@ -2077,7 +2894,7 @@ export const VideoGeneratorModal: React.FC<VideoGeneratorModalProps> = ({ isOpen
                                     </div>
                                 </div>
                             ))}
-                        </div>
+                        </div> */}
                     </div>
                 )}
 
@@ -2300,13 +3117,13 @@ export const VideoGeneratorModal: React.FC<VideoGeneratorModalProps> = ({ isOpen
               {pexelsTarget !== 'albumArt' && (
               <div className="flex gap-2">
                 <button
-                  onClick={() => { setPexelsTab('photos'); searchPexels(pexelsQuery, 'photos'); }}
+                  onClick={() => { setPexelsTab('photos'); searchPexels(pexelsQuery, 'photos', 1, false); }}
                   className={`px-4 py-2 rounded-lg text-sm font-bold flex items-center gap-2 ${pexelsTab === 'photos' ? 'bg-emerald-600 text-white' : 'bg-zinc-800 text-zinc-400'}`}
                 >
                   <ImageIcon size={14} /> Photos
                 </button>
                 <button
-                  onClick={() => { setPexelsTab('videos'); searchPexels(pexelsQuery, 'videos'); }}
+                  onClick={() => { setPexelsTab('videos'); searchPexels(pexelsQuery, 'videos', 1, false); }}
                   className={`px-4 py-2 rounded-lg text-sm font-bold flex items-center gap-2 ${pexelsTab === 'videos' ? 'bg-emerald-600 text-white' : 'bg-zinc-800 text-zinc-400'}`}
                 >
                   <Video size={14} /> Videos
@@ -2318,12 +3135,12 @@ export const VideoGeneratorModal: React.FC<VideoGeneratorModalProps> = ({ isOpen
                   type="text"
                   value={pexelsQuery}
                   onChange={(e) => setPexelsQuery(e.target.value)}
-                  onKeyDown={(e) => e.key === 'Enter' && searchPexels(pexelsQuery, pexelsTab)}
+                  onKeyDown={(e) => e.key === 'Enter' && searchPexels(pexelsQuery, pexelsTab, 1, false)}
                   placeholder="Search for backgrounds..."
                   className="flex-1 bg-zinc-800 rounded-lg px-4 py-2 text-sm text-white border border-white/10 placeholder-zinc-500"
                 />
                 <button
-                  onClick={() => searchPexels(pexelsQuery, pexelsTab)}
+                  onClick={() => searchPexels(pexelsQuery, pexelsTab, 1, false)}
                   disabled={pexelsLoading}
                   className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 rounded-lg text-white font-bold text-sm flex items-center gap-2 disabled:opacity-50"
                 >
@@ -2336,7 +3153,7 @@ export const VideoGeneratorModal: React.FC<VideoGeneratorModalProps> = ({ isOpen
                 {['abstract', 'nature', 'city', 'space', 'neon', 'particles', 'smoke', 'fire', 'water', 'technology'].map(tag => (
                   <button
                     key={tag}
-                    onClick={() => { setPexelsQuery(tag); searchPexels(tag, pexelsTab); }}
+                    onClick={() => { setPexelsQuery(tag); searchPexels(tag, pexelsTab, 1, false); }}
                     className="px-3 py-1 bg-zinc-800 hover:bg-zinc-700 rounded-full text-xs text-zinc-400 hover:text-white capitalize"
                   >
                     {tag}
@@ -2347,7 +3164,7 @@ export const VideoGeneratorModal: React.FC<VideoGeneratorModalProps> = ({ isOpen
 
             {/* Results Grid */}
             <div className="flex-1 overflow-y-auto p-4">
-              {pexelsLoading ? (
+              {pexelsLoading && !pexelsLoadingMore ? (
                 <div className="flex items-center justify-center h-48">
                   <Loader2 size={32} className="animate-spin text-emerald-500" />
                 </div>
@@ -2397,6 +3214,18 @@ export const VideoGeneratorModal: React.FC<VideoGeneratorModalProps> = ({ isOpen
               )}
               {!pexelsLoading && pexelsVideos.length === 0 && pexelsTab === 'videos' && (
                 <p className="text-center text-zinc-500 py-8">No videos found. Try a different search term.</p>
+              )}
+              {!pexelsLoading && pexelsHasMore && (
+                <div className="flex justify-center pt-4">
+                  <button
+                    onClick={loadMorePexels}
+                    disabled={pexelsLoadingMore}
+                    className="px-4 py-2 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-sm font-bold text-zinc-200 transition-colors disabled:opacity-60 disabled:cursor-not-allowed flex items-center gap-2"
+                  >
+                    {pexelsLoadingMore && <Loader2 size={14} className="animate-spin" />}
+                    {pexelsLoadingMore ? 'Loading...' : 'Load More'}
+                  </button>
+                </div>
               )}
             </div>
 

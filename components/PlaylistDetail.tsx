@@ -3,6 +3,7 @@ import { Song, Playlist, playlistsApi, songsApi, getAudioUrl } from '../services
 import { useAuth } from '../context/AuthContext';
 import { useI18n } from '../context/I18nContext';
 import { ArrowLeft, Play, MoreHorizontal, Clock, Calendar, Shuffle, Trash2, Mic2, Music } from 'lucide-react';
+import { getAvatarUrl } from '../utils/avatar';
 
 interface PlaylistDetailProps {
     playlistId: string;
@@ -140,11 +141,7 @@ export const PlaylistDetail: React.FC<PlaylistDetailProps> = ({ playlistId, onBa
                                 className="flex items-center gap-2 cursor-pointer hover:underline"
                                 onClick={() => onNavigateToProfile(playlist.creator!)}
                             >
-                                {playlist.creator_avatar ? (
-                                    <img src={playlist.creator_avatar} alt={playlist.creator} className="w-5 h-5 md:w-6 md:h-6 rounded-full object-cover" />
-                                ) : (
-                                    <div className="w-5 h-5 md:w-6 md:h-6 rounded-full bg-gradient-to-r from-green-400 to-blue-500"></div>
-                                )}
+                                <img src={getAvatarUrl(playlist.creator_avatar, playlist.creator)} alt={playlist.creator} className="w-5 h-5 md:w-6 md:h-6 rounded-full object-cover" />
                                 <span>{playlist.creator}</span>
                             </div>
                         )}

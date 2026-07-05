@@ -109,6 +109,29 @@ const VOCAL_LANGUAGE_KEYS = [
   { value: 'zh', key: 'vocalChineseMandarin' as const },
 ];
 
+const normalizeLyricsInput = (value: string): string => {
+  let normalized = value.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+  const trimmed = normalized.trim();
+
+  if (trimmed.startsWith('"') && trimmed.endsWith('"')) {
+    try {
+      const parsed = JSON.parse(trimmed);
+      if (typeof parsed === 'string') {
+        normalized = parsed;
+      }
+    } catch {
+      // Fall through to targeted escape cleanup below.
+    }
+  }
+
+  return normalized
+    .replace(/\\r\\n/g, '\n')
+    .replace(/\\n/g, '\n')
+    .replace(/\\r/g, '\n')
+    .replace(/[ \t]+\n/g, '\n')
+    .replace(/\n{3,}/g, '\n\n');
+};
+
 export const CreatePanel: React.FC<CreatePanelProps> = ({
   onGenerate,
   isGenerating,
@@ -216,6 +239,14 @@ export const CreatePanel: React.FC<CreatePanelProps> = ({
   const [isFormatCaption, setIsFormatCaption] = useState(false);
   const [maxDurationWithLm, setMaxDurationWithLm] = useState(240);
   const [maxDurationWithoutLm, setMaxDurationWithoutLm] = useState(240);
+  const [gpuMemoryGb, setGpuMemoryGb] = useState<number | null>(null);
+
+   // DCW Parameters
+  const [dcwEnabled, setDcwEnabled] = useState(true);
+  const [dcwMode, setDcwMode] = useState('double');
+  const [dcwScaler, setDcwScaler] = useState(0.05);
+  const [dcwHighScaler, setDcwHighScaler] = useState(0.02);
+  const [dcwWavelet, setDcwWavelet] = useState('haar');
 
   // LoRA Parameters
   const [showLoraPanel, setShowLoraPanel] = useState(false);
@@ -237,6 +268,15 @@ export const CreatePanel: React.FC<CreatePanelProps> = ({
   // Available models fetched from backend
   const [fetchedModels, setFetchedModels] = useState<{ name: string; is_active: boolean; is_preloaded: boolean }[]>([]);
 
+  // VAE selection
+  const [selectedVae, setSelectedVae] = useState<string>(() => {
+    return localStorage.getItem('ace-vae') || 'official';
+  });
+  const [fetchedVaeModels, setFetchedVaeModels] = useState<{ name: string; is_preloaded: boolean }[]>([]);
+  const [showVaeMenu, setShowVaeMenu] = useState(false);
+  const vaeMenuRef = useRef<HTMLDivElement>(null);
+
+
   // Fallback model list when backend is unavailable
   const availableModels = useMemo(() => {
     if (fetchedModels.length > 0) {
@@ -249,8 +289,19 @@ export const CreatePanel: React.FC<CreatePanelProps> = ({
       { id: 'acestep-v15-turbo-shift1', name: 'acestep-v15-turbo-shift1' },
       { id: 'acestep-v15-turbo-shift3', name: 'acestep-v15-turbo-shift3' },
       { id: 'acestep-v15-turbo-continuous', name: 'acestep-v15-turbo-continuous' },
+      { id: 'acestep-v15-xl-turbo', name: 'acestep-v15-xl-turbo' },
     ];
   }, [fetchedModels]);
+
+  const availableVaeModels = useMemo(() => {
+    if (fetchedVaeModels.length > 0) {
+      return fetchedVaeModels.map(v => ({ id: v.name, name: v.name, is_preloaded: v.is_preloaded }));
+    }
+    return [
+      { id: 'official', name: 'official', is_preloaded: true },
+      { id: 'scragvae', name: 'scragvae', is_preloaded: false },
+    ];
+  }, [fetchedVaeModels]);
 
   // Map model ID to short display name
   const getModelDisplayName = (modelId: string): string => {
@@ -261,8 +312,30 @@ export const CreatePanel: React.FC<CreatePanelProps> = ({
       'acestep-v15-turbo-shift3': '1.5TS3',
       'acestep-v15-turbo-continuous': '1.5TC',
       'acestep-v15-turbo': '1.5T',
+      'acestep-v15-xl-turbo': '1.5XL-T',
     };
     return mapping[modelId] || modelId;
+  };
+
+  const getLmModelOptionLabel = (modelId: string): string => {
+    const gpu = gpuMemoryGb;
+    if (modelId.includes('0.6B')) {
+      if (gpu === null) return '0.6B - Low VRAM / safest';
+      return `0.6B - Safe on your ${gpu}GB GPU`;
+    }
+    if (modelId.includes('1.7B')) {
+      if (gpu === null) return '1.7B - Balanced';
+      if (gpu < 8) return `1.7B - Risky on your ${gpu}GB GPU`;
+      if (gpu < 16) return `1.7B - Balanced on your ${gpu}GB GPU`;
+      return `1.7B - Safe on your ${gpu}GB GPU`;
+    }
+    if (modelId.includes('4B')) {
+      if (gpu === null) return '4B - Best quality, high VRAM';
+      if (gpu < 12) return `4B - High VRAM, risky on your ${gpu}GB GPU`;
+      if (gpu < 20) return `4B - High VRAM, may need offload on your ${gpu}GB GPU`;
+      return `4B - Best quality, suitable for your ${gpu}GB GPU`;
+    }
+    return modelId;
   };
 
   // Check if model is a turbo variant
@@ -352,6 +425,19 @@ export const CreatePanel: React.FC<CreatePanelProps> = ({
       return () => document.removeEventListener('mousedown', handleClickOutside);
     }
   }, [showModelMenu]);
+
+  // Close VAE menu when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (vaeMenuRef.current && !vaeMenuRef.current.contains(event.target as Node)) {
+        setShowVaeMenu(false);
+      }
+    };
+    if (showVaeMenu) {
+      document.addEventListener('mousedown', handleClickOutside);
+      return () => document.removeEventListener('mousedown', handleClickOutside);
+    }
+  }, [showVaeMenu]);
 
   // Auto-unload LoRA when model changes
   useEffect(() => {
@@ -451,7 +537,7 @@ export const CreatePanel: React.FC<CreatePanelProps> = ({
     reader.onload = (ev) => {
       try {
         const data = JSON.parse(ev.target?.result as string);
-        if (data.lyrics !== undefined) setLyrics(data.lyrics);
+        if (data.lyrics !== undefined) setLyrics(normalizeLyricsInput(String(data.lyrics)));
         if (data.style !== undefined) setStyle(data.style);
         if (data.title !== undefined) setTitle(data.title);
         if (data.caption !== undefined) setStyle(data.caption);
@@ -490,7 +576,7 @@ export const CreatePanel: React.FC<CreatePanelProps> = ({
   useEffect(() => {
     if (initialData) {
       setCustomMode(true);
-      setLyrics(initialData.song.lyrics);
+      setLyrics(normalizeLyricsInput(initialData.song.lyrics));
       setStyle(initialData.song.style);
       setTitle(initialData.song.title);
       setInstrumental(initialData.song.lyrics.length === 0);
@@ -569,6 +655,10 @@ export const CreatePanel: React.FC<CreatePanelProps> = ({
             localStorage.setItem('ace-model', active.name);
           }
         }
+        const vaes = data.vaeModels || [];
+        if (vaes.length > 0) {
+          setFetchedVaeModels(vaes);
+        }
       }
     } catch {
       // ignore - will use fallback model list
@@ -589,6 +679,9 @@ export const CreatePanel: React.FC<CreatePanelProps> = ({
         }
         if (typeof data.max_duration_without_lm === 'number') {
           setMaxDurationWithoutLm(data.max_duration_without_lm);
+        }
+        if (typeof data.gpu_memory_gb === 'number') {
+          setGpuMemoryGb(Math.round(data.gpu_memory_gb));
         }
       } catch {
         // ignore limits fetch failures
@@ -696,7 +789,7 @@ export const CreatePanel: React.FC<CreatePanelProps> = ({
     try {
       const result = await generateApi.formatInput({
         caption: style,
-        lyrics: lyrics,
+        lyrics: normalizeLyricsInput(lyrics),
         bpm: bpm > 0 ? bpm : undefined,
         duration: duration > 0 ? duration : undefined,
         keyScale: keyScale || undefined,
@@ -711,7 +804,7 @@ export const CreatePanel: React.FC<CreatePanelProps> = ({
       if (result.caption || result.lyrics || result.bpm || result.duration) {
         // Update fields with LLM-generated values
         if (target === 'style' && result.caption) setStyle(result.caption);
-        if (target === 'lyrics' && result.lyrics) setLyrics(result.lyrics);
+        if (target === 'lyrics' && result.lyrics) setLyrics(normalizeLyricsInput(result.lyrics));
         if (result.bpm && result.bpm > 0) setBpm(result.bpm);
         if (result.duration && result.duration > 0) setDuration(result.duration);
         if (result.key_scale) setKeyScale(result.key_scale);
@@ -820,7 +913,7 @@ export const CreatePanel: React.FC<CreatePanelProps> = ({
       }
       const data = await response.json();
       if (data.lyrics) {
-        setLyrics(prev => prev || data.lyrics);
+        setLyrics(prev => prev || normalizeLyricsInput(data.lyrics));
       }
     } catch (err) {
       if (controller.signal.aborted) return;
@@ -966,6 +1059,11 @@ export const CreatePanel: React.FC<CreatePanelProps> = ({
   };
 
   const handleGenerate = () => {
+    const normalizedLyrics = normalizeLyricsInput(lyrics);
+    if (normalizedLyrics !== lyrics) {
+      setLyrics(normalizedLyrics);
+    }
+
     const styleWithGender = (() => {
       if (!vocalGender) return style;
       const genderHint = vocalGender === 'male' ? 'Male vocals' : 'Female vocals';
@@ -987,8 +1085,8 @@ export const CreatePanel: React.FC<CreatePanelProps> = ({
       onGenerate({
         customMode,
         songDescription: customMode ? undefined : songDescription,
-        prompt: lyrics,
-        lyrics,
+        prompt: normalizedLyrics,
+        lyrics: normalizedLyrics,
         style: styleWithGender,
         title: bulkCount > 1 ? `${title} (${i + 1})` : title,
         ditModel: selectedModel,
@@ -1049,6 +1147,12 @@ export const CreatePanel: React.FC<CreatePanelProps> = ({
         })(),
         isFormatCaption,
         loraLoaded,
+        dcwEnabled,
+        dcwMode,
+        dcwScaler,
+        dcwHighScaler,
+        dcwWavelet,
+        vaeModel: selectedVae,
       });
     }
 
@@ -1121,13 +1225,18 @@ export const CreatePanel: React.FC<CreatePanelProps> = ({
         />
 
         {/* Header - Mode Toggle & Model Selection */}
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></div>
-            <span className="text-xs font-medium text-zinc-500 dark:text-zinc-400">ACE-Step v1.5</span>
+        <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-2">
+          <div className="flex items-center gap-2 text-zinc-500 dark:text-zinc-400">
+            <div className="flex h-4 items-end gap-0.5" aria-hidden="true">
+              <span className="w-0.5 h-2 rounded-full bg-[#8fbc8f]" />
+              <span className="w-0.5 h-3.5 rounded-full bg-[#8fbc8f]" />
+              <span className="w-0.5 h-2.5 rounded-full bg-[#8fbc8f]" />
+              <span className="w-0.5 h-4 rounded-full bg-[#8fbc8f]" />
+            </div>
+            <span className="hidden sm:inline text-xs font-semibold tracking-wide">Create Studio</span>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="justify-self-center">
             {/* Mode Toggle */}
             <div className="flex items-center bg-zinc-200 dark:bg-black/40 rounded-lg p-1 border border-zinc-300 dark:border-white/5">
               <button
@@ -1144,7 +1253,10 @@ export const CreatePanel: React.FC<CreatePanelProps> = ({
               </button>
             </div>
 
-            {/* Model Selection */}
+            {/* Model Selection (DiT模型选择) */}
+          </div>
+
+          <div className="justify-self-end">
             <div className="relative" ref={modelMenuRef}>
               <button
                 onClick={() => setShowModelMenu(!showModelMenu)}
@@ -1202,9 +1314,64 @@ export const CreatePanel: React.FC<CreatePanelProps> = ({
                 </div>
               )}
             </div>
+
+           
+            
+          </div>
+          
+        </div>
+        {/* VAE Selection (VAE模型选择) */}
+        <div className='flex item-center justify-between'>
+          <label className="text-xs font-bold text-zinc-500 dark:text-zinc-400 uppercase tracking-wide px-1">VAE Select</label>
+          <div className="relative" ref={vaeMenuRef}>
+            <button
+              type="button"
+              onClick={() => setShowVaeMenu(!showVaeMenu)}
+              className="bg-zinc-200 dark:bg-black/40 border border-zinc-300 dark:border-white/5 rounded-md px-2 py-1 text-[11px] font-medium text-zinc-900 dark:text-white hover:bg-zinc-300 dark:hover:bg-black/50 transition-colors flex items-center gap-1"
+              disabled={availableVaeModels.length === 0}
+            >
+              {availableVaeModels.length === 0 ? '...' : (selectedVae === 'official' ? 'official' : selectedVae)}
+              <ChevronDown size={10} className="text-zinc-600 dark:text-zinc-400" />
+            </button>
+            {/* Floating VAE Menu */}
+            {showVaeMenu && availableVaeModels.length > 0 && (
+              <div className="absolute top-full right-0 mt-1 w-64 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded-xl shadow-2xl z-50 overflow-hidden">
+                <div className="max-h-64 overflow-y-auto custom-scrollbar">
+                  {availableVaeModels.map(vae => (
+                    <button
+                      key={vae.id}
+                      type="button"
+                      onClick={() => {
+                        setSelectedVae(vae.id);
+                        localStorage.setItem('ace-vae', vae.id);
+                        setShowVaeMenu(false);
+                      }}
+                      className={`w-full px-4 py-2.5 text-left hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors border-b border-zinc-100 dark:border-zinc-800 last:border-b-0 ${
+                        selectedVae === vae.id ? 'bg-zinc-50 dark:bg-zinc-800/50' : ''
+                      }`}
+                    >
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-semibold text-zinc-900 dark:text-white">
+                          {vae.id === 'official' ? 'official' : vae.name}
+                        </span>
+                        {vae.is_preloaded ? (
+                          <span className="px-1.5 py-0.5 rounded text-[8px] font-bold bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400">
+                            Ready
+                          </span>
+                        ) : (
+                          <span className="px-1.5 py-0.5 rounded text-[8px] font-bold bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400">
+                            Download
+                          </span>
+                        )}
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         </div>
-
+        
         {/* SIMPLE MODE */}
         {!customMode && (
           <div className="space-y-5">
@@ -1585,7 +1752,7 @@ export const CreatePanel: React.FC<CreatePanelProps> = ({
               <textarea
                 disabled={instrumental}
                 value={lyrics}
-                onChange={(e) => setLyrics(e.target.value)}
+                onChange={(e) => setLyrics(normalizeLyricsInput(e.target.value))}
                 placeholder={instrumental ? t('instrumental') + ' mode' : t('lyricsPlaceholder')}
                 className={`w-full bg-transparent p-3 text-sm text-zinc-900 dark:text-white placeholder-zinc-400 dark:placeholder-zinc-600 focus:outline-none resize-none font-mono leading-relaxed ${instrumental ? 'opacity-30 cursor-not-allowed' : ''}`}
                 style={{ height: `${lyricsHeight}px` }}
@@ -1600,7 +1767,7 @@ export const CreatePanel: React.FC<CreatePanelProps> = ({
             </div>
 
             {/* Style Input */}
-            <div className="bg-white dark:bg-suno-card rounded-xl border border-zinc-200 dark:border-white/5 overflow-hidden transition-colors group focus-within:border-zinc-400 dark:focus-within:border-white/20">
+            <div className="relative bg-white dark:bg-suno-card rounded-xl border border-zinc-200 dark:border-white/5 overflow-hidden transition-colors group focus-within:border-zinc-400 dark:focus-within:border-white/20">
               <div className="flex items-center justify-between px-3 py-2.5 bg-zinc-50 dark:bg-white/5 border-b border-zinc-100 dark:border-white/5">
                 <div>
                   <div className="flex items-center gap-2">
@@ -1621,12 +1788,14 @@ export const CreatePanel: React.FC<CreatePanelProps> = ({
                     className="p-1.5 hover:bg-zinc-200 dark:hover:bg-white/10 rounded transition-colors text-zinc-500 hover:text-black dark:hover:text-white"
                     title={t('refreshGenres')}
                     onClick={refreshMusicTags}
+                    disabled={isFormattingStyle}
                   >
                     <Dices size={14} />
                   </button>
                   <button
                     className="p-1.5 hover:bg-zinc-200 dark:hover:bg-white/10 rounded text-zinc-500 hover:text-black dark:hover:text-white transition-colors"
                     onClick={() => setStyle('')}
+                    disabled={isFormattingStyle}
                   >
                     <Trash2 size={14} />
                   </button>
@@ -1643,8 +1812,9 @@ export const CreatePanel: React.FC<CreatePanelProps> = ({
               <textarea
                 value={style}
                 onChange={(e) => setStyle(e.target.value)}
+                disabled={isFormattingStyle}
                 placeholder={t('stylePlaceholder')}
-                className="w-full h-20 bg-transparent p-3 text-sm text-zinc-900 dark:text-white placeholder-zinc-400 dark:placeholder-zinc-600 focus:outline-none resize-none"
+                className={`w-full h-20 bg-transparent p-3 text-sm text-zinc-900 dark:text-white placeholder-zinc-400 dark:placeholder-zinc-600 focus:outline-none resize-none ${isFormattingStyle ? 'cursor-not-allowed' : ''}`}
               />
               <div className="px-3 pb-3 space-y-3">
                 {/* Quick Tags */}
@@ -1653,6 +1823,7 @@ export const CreatePanel: React.FC<CreatePanelProps> = ({
                     <button
                       key={tag}
                       onClick={() => setStyle(prev => prev ? `${prev}, ${tag}` : tag)}
+                      disabled={isFormattingStyle}
                       className="text-[10px] font-medium bg-zinc-100 dark:bg-white/5 hover:bg-zinc-200 dark:hover:bg-white/10 text-zinc-600 dark:text-zinc-400 hover:text-black dark:hover:text-white px-2.5 py-1 rounded-full transition-colors border border-zinc-200 dark:border-white/5"
                     >
                       {tag}
@@ -1660,6 +1831,14 @@ export const CreatePanel: React.FC<CreatePanelProps> = ({
                   ))}
                 </div>
               </div>
+              {isFormattingStyle && (
+                <div className="absolute inset-0 z-20 flex items-center justify-center bg-white/65 dark:bg-black/55 backdrop-blur-[2px]">
+                  <div className="flex items-center gap-2 rounded-full border border-zinc-200 dark:border-white/10 bg-white/80 dark:bg-zinc-900/80 px-4 py-2 text-xs font-bold text-zinc-700 dark:text-zinc-200 shadow-lg">
+                    <Loader2 size={14} className="animate-spin text-pink-500" />
+                    <span>Thinking...</span>
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Title Input */}
@@ -1981,7 +2160,115 @@ export const CreatePanel: React.FC<CreatePanelProps> = ({
               helpText={t('howCloselyFollowPrompt')}
               title="How strongly the model follows the prompt. Higher = stricter, lower = freer."
             />
-
+            {/* DCW Settings Section */}
+            <div className="grid space-y-1.5">
+              {/* <h4 className="text-xs font-bold text-zinc-500 dark:text-zinc-400 uppercase tracking-wide">
+               
+              </h4> */}
+              <div className="flex items-center justify-between">
+                  <span className="text-xs font-medium text-zinc-600 dark:text-zinc-400" title="Enable Dual Conditioning Wavelet guidance.">
+                    DCW Settings
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setDcwEnabled(!dcwEnabled)}
+                    className={`w-10 h-5 rounded-full flex items-center transition-colors duration-200 px-0.5 border border-zinc-200 dark:border-white/5 ${dcwEnabled ? 'bg-pink-600' : 'bg-zinc-300 dark:bg-black/40'} cursor-pointer`}
+                  >
+                    <div className={`w-4 h-4 rounded-full bg-white transform transition-transform duration-200 shadow-sm ${dcwEnabled ? 'translate-x-5' : 'translate-x-0'}`} />
+                  </button>
+              </div>
+              
+              {dcwEnabled && (
+                <div className="space-y-3">
+                  <div className='grid grid-cols-2 gap-3'>
+                    <div className="space-y-1.5">
+                      <div className="space-y-1">
+                        <label
+                          className="text-[10px] font-medium text-zinc-500 dark:text-zinc-400"
+                          title="Wavelet family used by DCW. Haar is fast and stable; DB/Sym/Coif variants can sound slightly smoother or different, but may be less predictable."
+                        >
+                          DCW Wavelet Base
+                        </label>
+                        <select
+                          value={dcwWavelet}
+                          onChange={(e) => setDcwWavelet(e.target.value)}
+                          className="w-full bg-zinc-50 dark:bg-black/20 border border-zinc-200 dark:border-white/10 rounded-lg px-2 py-1 text-xs text-zinc-900 dark:text-white focus:outline-none cursor-pointer [&>option]:bg-white [&>option]:dark:bg-zinc-800"
+                        >
+                          <option value="haar">Haar</option>
+                          <option value="db2">DB2</option>
+                          <option value="db4">DB4</option>
+                          <option value="sym4">Sym4</option>
+                          <option value="sym8">Sym8</option>
+                          <option value="coif2">Coif2</option>
+                        </select>
+                      </div>
+                    </div>
+                    <div className="space-y-1.5">
+                      <div className="space-y-1">
+                          <label
+                            className="text-[10px] font-medium text-zinc-500 dark:text-zinc-400 "
+                            title="Which frequency bands DCW emphasizes. Low = low-frequency structure, High = high-frequency detail, Double = both, Pix = pixel-style wavelet behavior, None = disable DCW mode."
+                          >
+                            DCW Mode
+                          </label>
+                          <select
+                            value={dcwMode}
+                            onChange={(e) => setDcwMode(e.target.value)}
+                            className="w-full bg-zinc-50 dark:bg-black/20 border border-zinc-200 dark:border-white/10 rounded-lg px-2 py-1 text-xs text-zinc-900 dark:text-white focus:outline-none cursor-pointer [&>option]:bg-white [&>option]:dark:bg-zinc-800"
+                          >
+                            <option value="low">Low</option>
+                            <option value="double">Double</option>
+                            <option value="high">High</option>
+                            <option value="pix">Pix</option>
+                            <option value="none">None</option>
+                          </select>
+                      </div>
+                    </div>
+                  </div>
+                  
+                  <div className="space-y-1">
+                    <div className="flex justify-between items-center text-[10px] font-medium text-zinc-500 dark:text-zinc-400">
+                      <span
+                        className=""
+                        title="Overall DCW strength. Higher values can make conditioning stronger, but too high may cause artifacts or reduce naturalness. Small values are usually safer."
+                      >
+                        DCW Scaler
+                      </span>
+                      <span>{dcwScaler}</span>
+                    </div>
+                    <input
+                      type="range"
+                      min="0.0"
+                      max="1.0"
+                      step="0.01"
+                      value={dcwScaler}
+                      onChange={(e) => setDcwScaler(parseFloat(e.target.value))}
+                      className="w-full h-1 bg-zinc-200 dark:bg-zinc-700 rounded-lg appearance-none cursor-pointer accent-pink-600"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <div className="flex justify-between items-center text-[10px] font-medium text-zinc-500 dark:text-zinc-400">
+                      <span
+                        className=""
+                        title="Extra strength for high-frequency DCW detail. Higher values can add brightness/detail, but too much may create harshness, noise, or unstable texture."
+                      >
+                        DCW High Scaler
+                      </span>
+                      <span>{dcwHighScaler}</span>
+                    </div>
+                    <input
+                      type="range"
+                      min="0.0"
+                      max="1.0"
+                      step="0.01"
+                      value={dcwHighScaler}
+                      onChange={(e) => setDcwHighScaler(parseFloat(e.target.value))}
+                      className="w-full h-1 bg-zinc-200 dark:bg-zinc-700 rounded-lg appearance-none cursor-pointer accent-pink-600"
+                    />
+                  </div>
+                </div>
+              )}
+            </div>
             {/* Audio Format & Inference Method */}
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
@@ -2030,11 +2317,15 @@ export const CreatePanel: React.FC<CreatePanelProps> = ({
                 onChange={(e) => { const v = e.target.value; setLmModel(v); localStorage.setItem('ace-lmModel', v); }}
                 className="w-full bg-zinc-50 dark:bg-black/20 border border-zinc-200 dark:border-white/10 rounded-lg px-2 py-1.5 text-xs text-zinc-900 dark:text-white focus:outline-none"
               >
-                <option value="acestep-5Hz-lm-0.6B">{t('lmModel06B')}</option>
-                <option value="acestep-5Hz-lm-1.7B">{t('lmModel17B')}</option>
-                <option value="acestep-5Hz-lm-4B">{t('lmModel4B')}</option>
+                <option value="acestep-5Hz-lm-0.6B">{getLmModelOptionLabel('acestep-5Hz-lm-0.6B')}</option>
+                <option value="acestep-5Hz-lm-1.7B">{getLmModelOptionLabel('acestep-5Hz-lm-1.7B')}</option>
+                <option value="acestep-5Hz-lm-4B">{getLmModelOptionLabel('acestep-5Hz-lm-4B')}</option>
               </select>
-              <p className="text-[10px] text-zinc-500">{t('lmModelHint')}</p>
+              <p className="text-[10px] text-zinc-500">
+                {gpuMemoryGb === null
+                  ? 'Choose smaller models for lower VRAM GPUs. Risk hints appear when GPU memory is detected.'
+                  : `Detected GPU memory: ${gpuMemoryGb}GB. Risk hints are advisory; you can still choose any model.`}
+              </p>
             </div>
 
             {/* Seed */}
@@ -2434,6 +2725,7 @@ export const CreatePanel: React.FC<CreatePanelProps> = ({
                 {t('getLrcLyrics')}
               </label>
             </div>
+          
           </div>
         )}
       </div>

@@ -1,22 +1,130 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Song } from '../types';
 import { songsApi, getAudioUrl } from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import { useI18n } from '../context/I18nContext';
-import { ArrowLeft, Play, Pause, Heart, Share2, MoreHorizontal, ThumbsDown, Music as MusicIcon, Edit3, Eye } from 'lucide-react';
+import { ArrowLeft, Heart, Share2, MoreHorizontal, ThumbsDown, Music as MusicIcon, Edit3, Eye, Quote } from 'lucide-react';
 import { ShareModal } from './ShareModal';
 import { SongDropdownMenu } from './SongDropdownMenu';
+import { getAvatarUrl } from '../utils/avatar';
 
 interface SongProfileProps {
     songId: string;
+    initialSong?: Song | null;
     onBack: () => void;
     onPlay: (song: Song, list?: Song[]) => void;
     onNavigateToProfile: (username: string) => void;
     currentSong?: Song | null;
     isPlaying?: boolean;
+    currentTime?: number;
+    onPlayAtTime?: (song: Song, time: number) => void;
     likedSongIds?: Set<string>;
     onToggleLike?: (songId: string) => void;
     onDelete?: (song: Song) => void;
+}
+
+interface SyncedLyricLine {
+    time: number;
+    endTime?: number;
+    text: string;
+}
+
+function cleanLyricText(text: string): string {
+    return text
+        .split('\n')
+        .map(line => line
+            .replace(/\[(?:intro|verse|pre[-\s]?chorus|chorus|bridge|outro|hook|refrain|interlude|guitar|breakdown|drop|build|solo|spoken|fade|final(?:\s+chorus)?|post[-\s]?chorus|prelude|ending|song\s+ends?)[^\]]*\]/gi, '')
+            .trim()
+        )
+        .filter(Boolean)
+        .join('\n');
+}
+
+function capitalizeLatinLineStart(text: string): string {
+    return text.replace(/^(\s*["'([{¿¡]*)([a-z])/, (_match, prefix: string, letter: string) =>
+        `${prefix}${letter.toUpperCase()}`
+    );
+}
+
+function formatDisplayLyricText(text: string): string {
+    return text
+        .split('\n')
+        .map(line => capitalizeLatinLineStart(line))
+        .join('\n');
+}
+
+function parseTimestamp(timestamp: string): number {
+    const [minutes, seconds] = timestamp.split(':');
+    return (parseInt(minutes, 10) || 0) * 60 + (parseFloat(seconds) || 0);
+}
+
+function parseLrcText(lrc: string): SyncedLyricLine[] {
+    const lines: SyncedLyricLine[] = [];
+    lrc.split('\n').forEach(rawLine => {
+        const matches = [...rawLine.matchAll(/\[(\d{2}:\d{2}(?:\.\d{1,3})?)\]/g)];
+        if (matches.length === 0) return;
+
+        const lyricText = formatDisplayLyricText(cleanLyricText(rawLine.replace(/\[(\d{2}:\d{2}(?:\.\d{1,3})?)\]/g, '')));
+        if (!lyricText) return;
+
+        matches.forEach(match => {
+            lines.push({ time: parseTimestamp(match[1]), text: lyricText });
+        });
+    });
+
+    return lines
+        .sort((a, b) => a.time - b.time)
+        .map((line, index, sorted) => ({
+            ...line,
+            endTime: sorted[index + 1]?.time,
+        }));
+}
+
+function vttTimeToSeconds(time: string): number {
+    const parts = time.trim().split(':');
+    if (parts.length === 3) {
+        return (parseInt(parts[0], 10) || 0) * 3600 + (parseInt(parts[1], 10) || 0) * 60 + (parseFloat(parts[2]) || 0);
+    }
+    if (parts.length === 2) {
+        return (parseInt(parts[0], 10) || 0) * 60 + (parseFloat(parts[1]) || 0);
+    }
+    return parseFloat(time) || 0;
+}
+
+function parseSyncedLyrics(raw: string): SyncedLyricLine[] {
+    if (!raw.trim()) return [];
+    if (!raw.trim().startsWith('WEBVTT') && !raw.includes('-->')) {
+        return parseLrcText(raw);
+    }
+
+    const lines: SyncedLyricLine[] = [];
+    const blocks = raw.replace(/\r/g, '').split(/\n\s*\n/);
+    blocks.forEach(block => {
+        const blockLines = block.split('\n').map(line => line.trim()).filter(Boolean);
+        const timingLineIndex = blockLines.findIndex(line => line.includes('-->'));
+        if (timingLineIndex === -1) return;
+
+        const [start, end] = blockLines[timingLineIndex].split('-->').map(value => value.trim().split(/\s+/)[0]);
+        const text = formatDisplayLyricText(cleanLyricText(blockLines.slice(timingLineIndex + 1).join('\n')));
+        if (!text) return;
+
+        lines.push({
+            time: vttTimeToSeconds(start),
+            endTime: end ? vttTimeToSeconds(end) : undefined,
+            text,
+        });
+    });
+
+    return lines.sort((a, b) => a.time - b.time);
+}
+
+function parseGenerationParams(value: unknown): any {
+    if (!value || typeof value !== 'string') return value;
+    try {
+        return JSON.parse(value);
+    } catch {
+        return undefined;
+    }
 }
 
 const updateMetaTags = (song: Song) => {
@@ -82,22 +190,43 @@ const resetMetaTags = () => {
     updateMeta('meta[name="twitter:image"]', defaultImage);
 };
 
-export const SongProfile: React.FC<SongProfileProps> = ({ songId, onBack, onPlay, onNavigateToProfile, currentSong, isPlaying, likedSongIds = new Set(), onToggleLike, onDelete }) => {
+export const SongProfile: React.FC<SongProfileProps> = ({ songId, initialSong = null, onBack, onPlay, onNavigateToProfile, currentSong, isPlaying, currentTime = 0, onPlayAtTime, likedSongIds = new Set(), onToggleLike, onDelete }) => {
     const { user, token } = useAuth();
     const { t } = useI18n();
-    const [song, setSong] = useState<Song | null>(null);
-    const [loading, setLoading] = useState(true);
+    const [song, setSong] = useState<Song | null>(initialSong);
+    const [loading, setLoading] = useState(!initialSong);
     const [shareModalOpen, setShareModalOpen] = useState(false);
     const [showDropdown, setShowDropdown] = useState(false);
+    const [showLyricsPanel, setShowLyricsPanel] = useState(false);
+    const [syncedLyrics, setSyncedLyrics] = useState<SyncedLyricLine[]>([]);
+    const lyricLineRefs = useRef<Record<number, HTMLDivElement | null>>({});
 
     const isCurrentSong = song && currentSong?.id === song.id;
     const isCurrentlyPlaying = isCurrentSong && isPlaying;
     const isLiked = song ? likedSongIds.has(song.id) : false;
+    const playbackTime = isCurrentSong ? currentTime : 0;
+    const shouldLoadSyncedLyrics = Boolean(song?.generationParams?.getLrc);
+    const hasRenderableLyrics = Boolean(song?.lyrics?.trim()) || syncedLyrics.length > 0;
+    const activeLyricIndex = useMemo(() => {
+        if (!syncedLyrics.length) return -1;
+        return syncedLyrics.findIndex((line, index) => {
+            const endTime = line.endTime ?? syncedLyrics[index + 1]?.time;
+            return playbackTime >= line.time && (!endTime || playbackTime < endTime);
+        });
+    }, [playbackTime, syncedLyrics]);
 
     useEffect(() => {
-        loadSongData();
-        return () => resetMetaTags();
-    }, [songId]);
+        let cancelled = false;
+        if (initialSong?.id === songId) {
+            setSong(initialSong);
+        }
+        loadSongData(songId, () => cancelled);
+        setShowLyricsPanel(false);
+        return () => {
+            cancelled = true;
+            resetMetaTags();
+        };
+    }, [songId, initialSong]);
 
     useEffect(() => {
         if (song) {
@@ -105,10 +234,11 @@ export const SongProfile: React.FC<SongProfileProps> = ({ songId, onBack, onPlay
         }
     }, [song]);
 
-    const loadSongData = async () => {
+    const loadSongData = async (targetSongId = songId, isCancelled: () => boolean = () => false) => {
         setLoading(true);
         try {
-            const response = await songsApi.getFullSong(songId, token);
+            const response = await songsApi.getFullSong(targetSongId, token);
+            if (isCancelled()) return;
 
             const transformedSong: Song = {
                 id: response.song.id,
@@ -128,17 +258,54 @@ export const SongProfile: React.FC<SongProfileProps> = ({ songId, onBack, onPlay
                 userId: response.song.user_id,
                 creator: response.song.creator,
                 creator_avatar: response.song.creator_avatar,
+                generationParams: parseGenerationParams(response.song.generation_params),
             };
 
             setSong(transformedSong);
         } catch (error) {
+            if (isCancelled()) return;
             console.error('Failed to load song:', error);
         } finally {
-            setLoading(false);
+            if (!isCancelled()) setLoading(false);
         }
     };
 
-    if (loading) {
+    useEffect(() => {
+        if (!song?.audioUrl || !shouldLoadSyncedLyrics) {
+            setSyncedLyrics([]);
+            return;
+        }
+
+        let cancelled = false;
+        const lrcUrl = song.audioUrl.replace(/\.[^/.]+$/, '.lrc');
+
+        fetch(lrcUrl)
+            .then(response => {
+                if (!response.ok) throw new Error(`LRC not found: ${response.status}`);
+                return response.text();
+            })
+            .then(text => {
+                if (cancelled) return;
+                setSyncedLyrics(parseSyncedLyrics(text));
+            })
+            .catch(() => {
+                if (!cancelled) setSyncedLyrics([]);
+            });
+
+        return () => {
+            cancelled = true;
+        };
+    }, [song?.audioUrl, shouldLoadSyncedLyrics]);
+
+    useEffect(() => {
+        if (activeLyricIndex < 0) return;
+        lyricLineRefs.current[activeLyricIndex]?.scrollIntoView({
+            behavior: 'smooth',
+            block: 'center',
+        });
+    }, [activeLyricIndex]);
+
+    if (loading && !song) {
         return (
             <div className="flex items-center justify-center h-full bg-zinc-50 dark:bg-black">
                 <div className="text-zinc-500 dark:text-zinc-400 flex items-center gap-2">
@@ -161,7 +328,7 @@ export const SongProfile: React.FC<SongProfileProps> = ({ songId, onBack, onPlay
     }
 
     return (
-        <div className="w-full h-full flex flex-col bg-zinc-50 dark:bg-black overflow-hidden">
+        <div className={`w-full h-full flex flex-col bg-zinc-50 dark:bg-black overflow-hidden transition-opacity duration-200 ${loading ? 'opacity-100' : 'opacity-100'}`}>
             {/* Header */}
             <div className="border-b border-zinc-200 dark:border-zinc-800 px-4 md:px-6 py-4 flex-shrink-0">
                 <button
@@ -180,12 +347,8 @@ export const SongProfile: React.FC<SongProfileProps> = ({ songId, onBack, onPlay
                                 onClick={() => song.creator && onNavigateToProfile(song.creator)}
                                 className="flex items-center gap-2 cursor-pointer hover:underline"
                             >
-                                <div className="w-6 h-6 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-xs font-bold text-white overflow-hidden">
-                                    {song.creator_avatar ? (
-                                        <img src={song.creator_avatar} alt={song.creator || 'Creator'} className="w-full h-full object-cover" />
-                                    ) : (
-                                        song.creator ? song.creator[0].toUpperCase() : 'A'
-                                    )}
+                                <div className="w-6 h-6 rounded-full bg-zinc-100 dark:bg-zinc-900 flex items-center justify-center text-xs font-bold text-white overflow-hidden border border-zinc-200 dark:border-white/10">
+                                    <img src={getAvatarUrl(song.creator_avatar, song.creator)} alt={song.creator || 'Creator'} className="w-full h-full object-cover" />
                                 </div>
                                 <span className="text-zinc-900 dark:text-white font-semibold">{song.creator || 'Anonymous'}</span>
                             </div>
@@ -225,97 +388,148 @@ export const SongProfile: React.FC<SongProfileProps> = ({ songId, onBack, onPlay
 
             {/* Content */}
             <div className="flex-1 overflow-y-auto">
-                <div className="max-w-3xl mx-auto px-4 md:px-6 py-4 md:py-6 pb-24 lg:pb-32">
+                <div className={`${showLyricsPanel ? 'max-w-6xl' : 'max-w-3xl'} mx-auto px-4 md:px-6 py-4 md:py-6 pb-24 lg:pb-32`}>
 
-                    {/* Left Column: Song Details */}
-                    <div className="space-y-4 md:space-y-6">
-                        {/* Cover Art */}
-                        <div className="relative aspect-square max-w-xs md:max-w-sm mx-auto lg:mx-0 rounded-xl overflow-hidden shadow-2xl">
-                            <img src={song.coverUrl} alt={song.title} className={`w-full h-full object-cover transition-transform duration-500 ${isCurrentlyPlaying ? 'scale-105' : ''}`} />
-                            <button
-                                onClick={() => onPlay(song)}
-                                className={`absolute inset-0 transition-colors flex items-center justify-center group ${isCurrentSong ? 'bg-black/50' : 'bg-black/40 hover:bg-black/50'}`}
-                            >
-                                <div className="w-16 h-16 md:w-20 md:h-20 rounded-full bg-white group-hover:scale-110 transition-transform flex items-center justify-center shadow-xl">
-                                    {isCurrentlyPlaying ? (
-                                        <Pause size={28} className="text-black fill-black md:w-8 md:h-8" />
-                                    ) : (
-                                        <Play size={28} className="text-black fill-black ml-1 md:w-8 md:h-8" />
-                                    )}
-                                </div>
-                            </button>
-                            {isCurrentlyPlaying && (
-                                <div className="absolute bottom-4 left-4 flex items-center gap-1">
-                                    <span className="w-1.5 h-4 bg-pink-500 rounded-full animate-pulse" style={{ animationDelay: '0ms' }} />
-                                    <span className="w-1.5 h-6 bg-pink-500 rounded-full animate-pulse" style={{ animationDelay: '150ms' }} />
-                                    <span className="w-1.5 h-3 bg-pink-500 rounded-full animate-pulse" style={{ animationDelay: '300ms' }} />
-                                    <span className="w-1.5 h-7 bg-pink-500 rounded-full animate-pulse" style={{ animationDelay: '450ms' }} />
-                                </div>
-                            )}
-                        </div>
-
-                        {/* Action Buttons */}
-                        <div className="flex items-center justify-center lg:justify-start gap-2 md:gap-3 flex-wrap">
-                            <div className="flex items-center gap-2 bg-zinc-200 dark:bg-zinc-900 px-3 py-2 rounded-full text-sm">
-                                <Eye size={16} className="text-zinc-600 dark:text-white" />
-                                <span className="text-zinc-900 dark:text-white font-semibold">{song.viewCount || 0}</span>
-                            </div>
-                            <button
-                                onClick={() => onToggleLike?.(song.id)}
-                                className={`flex items-center gap-2 px-3 py-2 rounded-full text-sm transition-colors ${isLiked ? 'bg-pink-500 text-white' : 'bg-zinc-200 dark:bg-zinc-900 hover:bg-zinc-300 dark:hover:bg-zinc-800 text-zinc-900 dark:text-white'}`}
-                            >
-                                <Heart size={16} className={isLiked ? 'fill-current' : ''} />
-                                <span className="font-semibold">{song.likeCount || 0}</span>
-                            </button>
-                            {user?.id === song.userId && (
-                                <button
-                                    onClick={() => {
-                                        if (!song.audioUrl) return;
-                                        const audioUrl = song.audioUrl.startsWith('http') ? song.audioUrl : `${window.location.origin}${song.audioUrl}`;
-                                        window.open(`/editor?audioUrl=${encodeURIComponent(audioUrl)}`, '_blank');
-                                    }}
-                                    className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 px-3 py-2 rounded-full text-sm font-semibold transition-colors text-white"
-                                >
-                                    <Edit3 size={16} />
-                                    <span className="hidden md:inline">Edit</span>
-                                </button>
-                            )}
-                            <button
-                                onClick={() => setShareModalOpen(true)}
-                                className="p-2 bg-zinc-200 dark:bg-zinc-900 hover:bg-zinc-300 dark:hover:bg-zinc-800 rounded-full transition-colors"
-                            >
-                                <Share2 size={16} className="text-zinc-700 dark:text-white" />
-                            </button>
-                            <div className="relative">
-                                <button
-                                    onClick={() => setShowDropdown(!showDropdown)}
-                                    className="p-2 bg-zinc-200 dark:bg-zinc-900 hover:bg-zinc-300 dark:hover:bg-zinc-800 rounded-full transition-colors"
-                                >
-                                    <MoreHorizontal size={16} className="text-zinc-700 dark:text-white" />
-                                </button>
-                                {song && (
-                                    <SongDropdownMenu
-                                        song={song}
-                                        isOpen={showDropdown}
-                                        onClose={() => setShowDropdown(false)}
-                                        isOwner={user?.id === song.userId}
-                                        onReusePrompt={() => {}}
-                                        onAddToPlaylist={() => {}}
-                                        onDelete={() => onDelete?.(song)}
-                                        onShare={() => setShareModalOpen(true)}
-                                    />
+                    <div className={showLyricsPanel ? 'grid grid-cols-1 lg:grid-cols-[minmax(280px,380px)_minmax(0,1fr)] gap-5 md:gap-8 items-start' : 'flex flex-col items-center'}>
+                        <div className="space-y-4 md:space-y-6">
+                            {/* Cover Art */}
+                            <div className="relative aspect-square max-w-xs md:max-w-sm mx-auto lg:mx-0 rounded-xl overflow-hidden shadow-2xl">
+                                <img src={song.coverUrl} alt={song.title} className="w-full h-full object-cover" />
+                                {isCurrentlyPlaying && (
+                                    <div className="absolute bottom-4 left-4 flex items-center gap-1">
+                                        <span className="w-1.5 h-4 bg-pink-500 rounded-full animate-pulse" style={{ animationDelay: '0ms' }} />
+                                        <span className="w-1.5 h-6 bg-pink-500 rounded-full animate-pulse" style={{ animationDelay: '150ms' }} />
+                                        <span className="w-1.5 h-3 bg-pink-500 rounded-full animate-pulse" style={{ animationDelay: '300ms' }} />
+                                        <span className="w-1.5 h-7 bg-pink-500 rounded-full animate-pulse" style={{ animationDelay: '450ms' }} />
+                                    </div>
                                 )}
                             </div>
-                        </div>
 
-                        {/* Lyrics */}
-                        {song.lyrics && (
-                            <div className="bg-white dark:bg-zinc-900/50 border border-zinc-200 dark:border-zinc-800 rounded-xl p-4">
-                                <h3 className="text-sm font-semibold text-zinc-900 dark:text-white mb-3">Lyrics</h3>
-                                <div className="text-sm text-zinc-700 dark:text-zinc-300 whitespace-pre-line leading-relaxed max-h-72 md:max-h-96 overflow-y-auto">
-                                    {song.lyrics}
+                            {hasRenderableLyrics && (
+                                <div className="flex justify-center lg:justify-start">
+                                    <button
+                                        onClick={() => setShowLyricsPanel(prev => !prev)}
+                                        className={`flex items-center gap-2 px-3 py-2 rounded-full text-sm font-semibold transition-colors ${
+                                            showLyricsPanel
+                                                ? 'bg-white text-black dark:bg-white dark:text-black'
+                                                : 'bg-zinc-200 dark:bg-zinc-900 hover:bg-zinc-300 dark:hover:bg-zinc-800 text-zinc-900 dark:text-white'
+                                        }`}
+                                        title="Show lyrics"
+                                        aria-label="Show lyrics"
+                                    >
+                                        <Quote size={16} />
+                                        <span className="hidden sm:inline">Lyrics</span>
+                                    </button>
+                                </div>
+                            )}
+
+                            {/* Action Buttons */}
+                            <div className="flex items-center justify-center lg:justify-start gap-2 md:gap-3 flex-wrap">
+                                <div className="flex items-center gap-2 bg-zinc-200 dark:bg-zinc-900 px-3 py-2 rounded-full text-sm">
+                                    <Eye size={16} className="text-zinc-600 dark:text-white" />
+                                    <span className="text-zinc-900 dark:text-white font-semibold">{song.viewCount || 0}</span>
+                                </div>
+                                <button
+                                    onClick={() => onToggleLike?.(song.id)}
+                                    className={`flex items-center gap-2 px-3 py-2 rounded-full text-sm transition-colors ${isLiked ? 'bg-pink-500 text-white' : 'bg-zinc-200 dark:bg-zinc-900 hover:bg-zinc-300 dark:hover:bg-zinc-800 text-zinc-900 dark:text-white'}`}
+                                >
+                                    <Heart size={16} className={isLiked ? 'fill-current' : ''} />
+                                    <span className="font-semibold">{song.likeCount || 0}</span>
+                                </button>
+                                {user?.id === song.userId && (
+                                    <button
+                                        onClick={() => {
+                                            if (!song.audioUrl) return;
+                                            const audioUrl = song.audioUrl.startsWith('http') ? song.audioUrl : `${window.location.origin}${song.audioUrl}`;
+                                            window.open(`/editor?audioUrl=${encodeURIComponent(audioUrl)}`, '_blank');
+                                        }}
+                                        className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 px-3 py-2 rounded-full text-sm font-semibold transition-colors text-white"
+                                    >
+                                        <Edit3 size={16} />
+                                        <span className="hidden md:inline">Edit</span>
+                                    </button>
+                                )}
+                                <button
+                                    onClick={() => setShareModalOpen(true)}
+                                    className="p-2 bg-zinc-200 dark:bg-zinc-900 hover:bg-zinc-300 dark:hover:bg-zinc-800 rounded-full transition-colors"
+                                >
+                                    <Share2 size={16} className="text-zinc-700 dark:text-white" />
+                                </button>
+                                <div className="relative">
+                                    <button
+                                        onClick={() => setShowDropdown(!showDropdown)}
+                                        className="p-2 bg-zinc-200 dark:bg-zinc-900 hover:bg-zinc-300 dark:hover:bg-zinc-800 rounded-full transition-colors"
+                                    >
+                                        <MoreHorizontal size={16} className="text-zinc-700 dark:text-white" />
+                                    </button>
+                                    {song && (
+                                        <SongDropdownMenu
+                                            song={song}
+                                            isOpen={showDropdown}
+                                            onClose={() => setShowDropdown(false)}
+                                            isOwner={user?.id === song.userId}
+                                            onReusePrompt={() => {}}
+                                            onAddToPlaylist={() => {}}
+                                            onDelete={() => onDelete?.(song)}
+                                            onShare={() => setShareModalOpen(true)}
+                                        />
+                                    )}
                                 </div>
                             </div>
+                        </div>
+
+                        {showLyricsPanel && (
+                        <div className="bg-white dark:bg-zinc-900/50 border border-zinc-200 dark:border-zinc-800 rounded-xl p-4 md:p-6 min-h-[22rem] lg:min-h-[28rem]">
+                            {syncedLyrics.length > 0 ? (
+                                <div className="max-h-[32rem] overflow-y-auto px-2 md:px-4 pr-5 md:pr-7">
+                                    <div className="space-y-5 py-5">
+                                        {syncedLyrics.map((line, index) => {
+                                            const isActive = index === activeLyricIndex;
+                                            const isPast = activeLyricIndex > index;
+                                            return (
+                                                <div
+                                                    key={`${line.time}-${index}`}
+                                                    role="button"
+                                                    tabIndex={0}
+                                                    onClick={() => onPlayAtTime?.(song, line.time)}
+                                                    onKeyDown={event => {
+                                                        if (event.key === 'Enter' || event.key === ' ') {
+                                                            event.preventDefault();
+                                                            onPlayAtTime?.(song, line.time);
+                                                        }
+                                                    }}
+                                                    ref={element => {
+                                                        lyricLineRefs.current[index] = element;
+                                                    }}
+                                                    className={`max-w-full whitespace-normal break-words rounded-lg py-1 text-2xl md:text-[1.7rem] font-bold leading-snug transition-colors duration-300 cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-pink-500/50 ${
+                                                        isActive
+                                                            ? 'text-zinc-950 dark:text-white'
+                                                            : isPast
+                                                                ? 'text-zinc-400/70 dark:text-zinc-500/70 hover:text-zinc-600 dark:hover:text-zinc-300'
+                                                                : 'text-zinc-500 dark:text-zinc-600 hover:text-zinc-700 dark:hover:text-zinc-300'
+                                                    }`}
+                                                >
+                                                    {line.text}
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                </div>
+                            ) : song.lyrics ? (
+                                <>
+                                <h3 className="text-sm font-semibold text-zinc-900 dark:text-white mb-4">Lyrics</h3>
+                                <div className="text-sm md:text-base text-zinc-700 dark:text-zinc-300 whitespace-pre-line leading-relaxed max-h-[32rem] overflow-y-auto pr-2">
+                                    {formatDisplayLyricText(cleanLyricText(song.lyrics))}
+                                </div>
+                                </>
+                            ) : (
+                                <div className="h-64 flex flex-col items-center justify-center text-center text-zinc-400 dark:text-zinc-600 italic">
+                                    <MusicIcon size={28} className="mb-3 opacity-60" />
+                                    <span>Instrumental</span>
+                                    <span className="text-xs not-italic mt-1">No lyrics generated</span>
+                                </div>
+                            )}
+                        </div>
                         )}
                     </div>
 

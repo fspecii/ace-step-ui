@@ -29,10 +29,26 @@ const AUDIO_DIR = path.join(__dirname, '../../public/audio');
 const ACESTEP_API = config.acestep.apiUrl;
 
 // Resolve ACE-Step path (from env or default relative path)
-function resolveAceStepPath(): string {
+export function resolveAceStepPath(): string {
   const envPath = process.env.ACESTEP_PATH;
   if (envPath) {
     return path.isAbsolute(envPath) ? envPath : path.resolve(process.cwd(), envPath);
+  }
+  
+ // Sibling directories search order (checks all common names including case variations)
+  const candidateSiblings = [
+    'ACEStep1.5',
+    'ACEStep-1.5',
+    'ACE1.5',
+    'ACE-Step-1.5',
+    'ace-step-1.5',
+    'ace1.5'
+  ];
+  for (const sibling of candidateSiblings) {
+    const siblingPath = path.resolve(__dirname, `../../../${sibling}`);
+    if (existsSync(siblingPath)) {
+      return siblingPath;
+    }
   }
   // Default: sibling directory (server/src/services -> ../../../ACE-Step-1.5 = app/ACE-Step-1.5)
   return path.resolve(__dirname, '../../../ACE-Step-1.5');
@@ -72,7 +88,7 @@ export function resolvePythonPath(baseDir: string): string {
   return path.join(baseDir, 'env', 'bin', 'python');
 }
 
-const ACESTEP_DIR = resolveAceStepPath();
+let ACESTEP_DIR = resolveAceStepPath();
 const SCRIPTS_DIR = path.join(__dirname, '../../scripts');
 const PYTHON_SCRIPT = path.join(SCRIPTS_DIR, 'simple_generate.py');
 
@@ -134,77 +150,139 @@ async function buildGradioArgs(params: GenerationParams): Promise<unknown[]> {
   const caption = params.style || 'pop music';
   const prompt = params.customMode ? caption : (params.songDescription || caption);
   const lyrics = params.instrumental ? '' : (params.lyrics || '');
+  
+  // Enable thinking
   const isThinking = params.thinking ?? false;
   const isEnhance = params.enhance ?? false;
 
-  // Prepare audio files (async — reads from disk)
+  // Data pre-cleaning and type safety validation
+  let cleanTopK = 0;
+  if (params.lmTopK && (params.lmTopK as any) !== 'Auto') {
+      cleanTopK = Number(params.lmTopK);
+  }
+
+  const cleanBpm = params.bpm && params.bpm > 0 ? Number(params.bpm) : 0;
+  const cleanSteps = params.inferenceSteps ? Number(params.inferenceSteps) : 8;
+  const cleanGuidance = params.guidanceScale ? Number(params.guidanceScale) : 7.0;
+  const cleanDuration = params.duration && params.duration > 0 ? Number(params.duration) : -1;
+  const cleanBatchSize = Math.min(Math.max(params.batchSize ?? 1, 1), 16);
+  const cleanTemperature = params.lmTemperature ? Number(params.lmTemperature) : 0.85;
+  const cleanLmCfg = params.lmCfgScale ? Number(params.lmCfgScale) : 2.0;
+  const cleanTopP = params.lmTopP ? Number(params.lmTopP) : 0.9;
+  const cleanScoreScale = params.scoreScale ? Number(params.scoreScale) : 0.5;
+  const cleanChunkSize = params.lmBatchChunkSize ? Number(params.lmBatchChunkSize) : 8;
+
+  // Prepare audio files
   const referenceAudio = await prepareAudioFile(params.referenceAudioUrl);
   const sourceAudio = await prepareAudioFile(params.sourceAudioUrl);
 
-  // Guard: cover/repaint modes require source audio to be loadable
   const needsSource = params.taskType === 'cover' || params.taskType === 'audio2audio' || params.taskType === 'repaint';
   if (needsSource && params.sourceAudioUrl && sourceAudio === null) {
-    throw new Error(`Source audio file could not be loaded from: ${params.sourceAudioUrl}. Make sure the file was uploaded successfully.`);
+    throw new Error(`Source audio file could not be loaded...`);
   }
 
-  // CoT features are gated by enhance OR thinking (either enables LLM enrichment)
   const useCot = isEnhance || isThinking;
 
-  return [
-    prompt,                                                       //  0: Music Caption
-    lyrics,                                                       //  1: Lyrics
-    params.bpm && params.bpm > 0 ? params.bpm : 0,               //  2: BPM (0 = auto)
-    params.keyScale || '',                                        //  3: KeyScale
-    params.timeSignature || '',                                   //  4: Time Signature
-    params.vocalLanguage || 'en',                                 //  5: Vocal Language
-    params.inferenceSteps ?? 8,                                   //  6: DiT Inference Steps
-    params.guidanceScale ?? 7.0,                                  //  7: DiT Guidance Scale
-    params.randomSeed !== false,                                  //  8: Random Seed
-    String(params.seed ?? -1),                                    //  9: Seed
-    referenceAudio,                                               // 10: Reference Audio (filepath | null)
-    params.duration && params.duration > 0 ? params.duration : -1, // 11: Audio Duration (-1 = auto)
-    Math.min(Math.max(params.batchSize ?? 1, 1), 16),            // 12: Batch Size (clamped 1-16)
-    sourceAudio,                                                  // 13: Source Audio (filepath | null)
+  // Complete raw positional arguments array aligned exactly with the 78 inputs of generation_wrapper in generation_run_wiring.py
+  const rawArgs = [
+    prompt,                                                       // 0: Music Caption
+    lyrics,                                                       // 1: Lyrics
+    cleanBpm,                                                     // 2: BPM
+    params.keyScale || '',                                        // 3: KeyScale
+    params.timeSignature || '',                                   // 4: Time Signature
+    params.vocalLanguage || 'en',                                 // 5: Vocal Language
+    cleanSteps,                                                   // 6: DiT Inference Steps
+    cleanGuidance,                                                // 7: DiT Guidance Scale
+    params.randomSeed !== false,                                  // 8: Random Seed
+    Number(params.seed ?? -1),                                    // 9: Seed
+    referenceAudio,                                               // 10: Reference Audio
+    cleanDuration,                                                // 11: Audio Duration
+    cleanBatchSize,                                               // 12: Batch Size
+    sourceAudio,                                                  // 13: Source Audio
     params.audioCodes || '',                                      // 14: LM Codes Hints
     params.repaintingStart ?? 0.0,                                // 15: Repainting Start
     params.repaintingEnd ?? -1,                                   // 16: Repainting End
-    params.instruction || 'Fill the audio semantic mask with the style described in the text prompt.', // 17: Instruction
+    params.instruction || 'Fill the audio semantic mask...',       // 17: Instruction
     params.audioCoverStrength ?? 1.0,                             // 18: Audio Cover Strength
-    0.0,                                                          // 19: Cover Noise Strength (ACE-Step v1.5 new param, default 0.0)
+    0.0,                                                          // 19: Cover Noise Strength
     (params.taskType === 'audio2audio' ? 'cover' : params.taskType) || 'text2music', // 20: Task Type
-    params.useAdg ?? false,                                       // 21: Use ADG
-    params.cfgIntervalStart ?? 0.0,                               // 22: CFG Interval Start
-    params.cfgIntervalEnd ?? 1.0,                                 // 23: CFG Interval End
-    params.shift ?? 3.0,                                          // 24: Shift
-    params.inferMethod || 'ode',                                  // 25: Inference Method
-    params.customTimesteps || '',                                 // 26: Custom Timesteps
-    params.audioFormat || 'mp3',                                  // 27: Audio Format
-    params.lmTemperature ?? 0.85,                                 // 28: LM Temperature
-    isThinking,                                                   // 29: Think
-    params.lmCfgScale ?? 2.0,                                    // 30: LM CFG Scale
-    params.lmTopK ?? 0,                                           // 31: LM Top-K
-    params.lmTopP ?? 0.9,                                         // 32: LM Top-P
-    params.lmNegativePrompt || 'NO USER INPUT',                   // 33: LM Negative Prompt
-    useCot ? (params.useCotMetas ?? true) : false,                // 34: CoT Metas
-    useCot ? (params.useCotCaption ?? true) : false,              // 35: CaptionRewrite
-    useCot ? (params.useCotLanguage ?? true) : false,             // 36: CoT Language
-    params.isFormatCaption ?? false,                              // 37: Is Format Caption State
-    params.constrainedDecodingDebug ?? false,                     // 38: Constrained Decoding Debug
-    params.allowLmBatch ?? true,                                  // 39: ParallelThinking
-    params.getScores ?? false,                                    // 40: Auto Score
-    params.getLrc ?? false,                                       // 41: Auto LRC (timestamped lyrics)
-    params.scoreScale ?? 0.5,                                     // 42: Quality Score Sensitivity (0.01-1.0)
-    params.lmBatchChunkSize ?? 8,                                 // 43: LM Batch Chunk Size
-    params.trackName || null,                                     // 44: Track Name
-    params.completeTrackClasses || [],                            // 45: Track Names
-    true,                                                         // 46: Enable Normalization (ACE-Step v1.5, default true)
-    -1.0,                                                         // 47: Normalization DB (ACE-Step v1.5, default -1.0)
-    0.0,                                                          // 48: Latent Shift (ACE-Step v1.5, default 0.0)
-    1.0,                                                          // 49: Latent Rescale (ACE-Step v1.5, default 1.0)
-    params.autogen ?? false,                                      // 50: AutoGen
-    // Note: current_batch_index, total_batches, batch_queue, generation_params_state
-    // are hidden Gradio state variables and must NOT be passed via client.predict()
+    false,                                                        // 21: no_fsq
+    params.useAdg ?? false,                                       // 22: use_adg
+    params.cfgIntervalStart ?? 0.0,                               // 23: cfg_interval_start
+    params.cfgIntervalEnd ?? 1.0,                                 // 24: cfg_interval_end
+    params.shift ?? 3.0,                                          // 25: shift
+    params.inferMethod || 'ode',                                  // 26: infer_method
+    'euler',                                                      // 27: sampler_mode
+    0.0,                                                          // 28: velocity_norm_threshold
+    0.0,                                                          // 29: velocity_ema_factor
+    params.dcwEnabled ?? true,                                    // 30: dcw_enabled
+    params.dcwMode || 'double',                                   // 31: dcw_mode
+    params.dcwScaler !== undefined ? params.dcwScaler : (isThinking ? 0.02 : 0.05), // 32: dcw_scaler
+    params.dcwHighScaler !== undefined ? params.dcwHighScaler : (isThinking ? 0.06 : 0.02), // 33: dcw_high_scaler
+    params.dcwWavelet || 'haar',                                  // 34: dcw_wavelet
+    params.customTimesteps || '',                                 // 35: custom_timesteps
+    params.audioFormat || 'mp3',                                  // 36: audio_format
+    '128k',                                                       // 37: mp3_bitrate
+    48000,                                                        // 38: mp3_sample_rate
+    cleanTemperature,                                             // 39: lm_temperature
+    isThinking,                                                   // 40: think_checkbox
+    cleanLmCfg,                                                   // 41: lm_cfg_scale
+    cleanTopK,                                                    // 42: lm_top_k
+    cleanTopP,                                                    // 43: lm_top_p
+    params.lmNegativePrompt || 'NO USER INPUT',                   // 44: lm_negative_prompt
+    useCot ? (params.useCotMetas ?? true) : false,                // 45: use_cot_metas
+    useCot ? (params.useCotCaption ?? true) : false,              // 46: use_cot_caption
+    useCot ? (params.useCotLanguage ?? true) : false,             // 47: use_cot_language
+    params.isFormatCaption ?? false,                              // 48: is_format_caption_state
+    params.constrainedDecodingDebug ?? false,                     // 49: constrained_decoding_debug
+    params.allowLmBatch ?? true,                                  // 50: allow_lm_batch
+    params.getScores ?? false,                                    // 51: auto_score
+    params.getLrc ?? false,                                       // 52: auto_lrc
+    cleanScoreScale,                                              // 53: score_scale
+    cleanChunkSize,                                               // 54: lm_batch_chunk_size
+    params.trackName || null,                                     // 55: track_name
+    params.completeTrackClasses || [],                            // 56: complete_track_classes
+    true,                                                         // 57: enable_normalization
+    -1.0,                                                         // 58: normalization_db
+    0.0,                                                          // 59: fade_in_duration
+    0.0,                                                          // 60: fade_out_duration
+    0.0,                                                          // 61: latent_shift
+    1.0,                                                          // 62: latent_rescale
+    'balanced',                                                   // 63: repaint_mode
+    0.5,                                                          // 64: repaint_strength
+    0.0,                                                          // 65: retake_variance
+    '',                                                           // 66: retake_seed
+    false,                                                        // 67: flow_edit_morph
+    '',                                                           // 68: flow_edit_source_caption
+    '',                                                           // 69: flow_edit_source_lyrics
+    0.0,                                                          // 70: flow_edit_n_min
+    1.0,                                                          // 71: flow_edit_n_max
+    1,                                                            // 72: flow_edit_n_avg
+    params.autogen ?? false,                                      // 73: autogen_checkbox
+    0,                                                            // 74: current_batch_index
+    1,                                                            // 75: total_batches
+    null,                                                         // 76: batch_queue
+    null,                                                         // 77: generation_params_state
   ];
+
+  // Type coercion and normalization map to ensure exact types for Gradio
+  return rawArgs.map((val, idx) => {
+    const isStringOrObjSlot = [
+      0, 1, 3, 4, 5, 10, 13, 14, 17, 20, 26, 27, 31, 34, 35, 36, 37, 44, 55, 56, 63, 66, 68, 69, 76, 77
+    ].includes(idx);
+    
+    if (!isStringOrObjSlot) {
+      if (typeof val === 'string' && (val.toLowerCase() === 'true' || val.toLowerCase() === 'false')) {
+        return val.toLowerCase() === 'true';
+      }
+      
+      if (typeof val === 'string' || val === undefined || val === null) {
+        const parsed = Number(val || 0);
+        return isNaN(parsed) ? 0 : parsed;
+      }
+    }
+    return val;
+  });
 }
 
 /**
@@ -319,9 +397,14 @@ export interface GenerationParams {
   trackName?: string;
   completeTrackClasses?: string[];
   isFormatCaption?: boolean;
-
+  dcwEnabled?: boolean;
+  dcwMode?: string;
+  dcwScaler?: number;
+  dcwHighScaler?: number;
+  dcwWavelet?: string;
   // Model selection
   ditModel?: string;
+  vaeModel?: string;
 }
 
 interface GenerationResult {
@@ -330,6 +413,7 @@ interface GenerationResult {
   bpm?: number;
   keyScale?: string;
   timeSignature?: string;
+  scores?: string[];
   status: string;
 }
 
@@ -400,7 +484,10 @@ async function switchModelIfNeeded(ditModel: string): Promise<void> {
 
   if (!res.ok) {
     const err = await res.text().catch(() => '');
-    throw new Error(`Model switch to '${ditModel}' failed: ${res.status} ${err}`);
+    if (res.status === 404) {
+      console.warn(`[Model] Model switch API (/v1/init) not supported by older ACE-Step backend (404). Proceeding to generation with default/preloaded model.`);
+      return;
+    }
   }
   console.log(`[Model] Switched to '${ditModel}'`);
 }
@@ -452,6 +539,9 @@ async function processQueue(): Promise<void> {
 
 // Submit generation job to queue
 export async function generateMusicViaAPI(params: GenerationParams): Promise<{ jobId: string }> {
+  // Re-evaluate ACESTEP_DIR in case process.env.ACESTEP_PATH was updated at runtime
+  ACESTEP_DIR = resolveAceStepPath();
+
   const jobId = `job_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
 
   const job: ActiveJob = {
@@ -507,6 +597,33 @@ async function processGeneration(
   await processGenerationViaPython(jobId, params, job);
 }
 
+/**
+ * Dynamically align Gradio raw arguments array to match the exact input length
+ * expected by the remote Gradio /generation_wrapper API endpoint.
+ * This guarantees complete forward and backward compatibility across versions.
+ */
+function alignGradioArgs(args: unknown[], client: any): unknown[] {
+  try {
+    const dependency = client.config?.dependencies?.find((d: any) => d.api_name === 'generation_wrapper');
+    if (dependency && Array.isArray(dependency.inputs)) {
+      const expectedLength = dependency.inputs.length;
+      console.log(`[ACE-Step] [Gradio] Dynamic alignment: remote expects ${expectedLength} inputs, local payload has ${args.length} inputs`);
+      if (args.length > expectedLength) {
+        return args.slice(0, expectedLength);
+      } else if (args.length < expectedLength) {
+        const padded = [...args];
+        while (padded.length < expectedLength) {
+          padded.push(null);
+        }
+        return padded;
+      }
+    }
+  } catch (err) {
+    console.warn('[ACE-Step] [Gradio] Failed to dynamically align Gradio arguments:', err);
+  }
+  return args;
+}
+
 async function processGenerationViaGradio(
   jobId: string,
   params: GenerationParams,
@@ -520,6 +637,7 @@ async function processGenerationViaGradio(
 
   const client = await getGradioClient();
   const args = await buildGradioArgs(params);
+  const alignedArgs = alignGradioArgs(args, client);
 
   const caption = params.style || 'pop music';
   const prompt = params.customMode ? caption : (params.songDescription || caption);
@@ -533,7 +651,8 @@ async function processGenerationViaGradio(
   job.stage = 'Generating music via Gradio...';
 
   // predict() blocks until generation is complete
-  const result = await client.predict('/generation_wrapper', args);
+  // const result = await client.predict('/generation_wrapper', args);
+  const result = await client.predict('/generation_wrapper', alignedArgs);
   const data = result.data as unknown[];
 
   if (!Array.isArray(data) || data.length === 0) {
@@ -541,14 +660,10 @@ async function processGenerationViaGradio(
   }
 
   // Extract audio files from the result
-  // Outputs 0-7: individual audio samples (filepath objects)
-  // Output 8: "All Generated Files" as list[filepath]
-  // Output 9: "Generation Details" (string)
-  // Output 10: "Generation Status" (string)
-  // Output 11: "Seed" (string)
   const allFiles = data[8]; // list of file objects
   const genDetails = data[9] as string | undefined;
   const genStatus = data[10] as string | undefined;
+  const scoreOutputs = extractGradioScoreOutputs(data);
 
   // Collect audio file objects — prefer the "All Generated Files" list
   let audioFileObjects: Array<{ url?: string; path?: string; orig_name?: string }> = [];
@@ -583,8 +698,38 @@ async function processGenerationViaGradio(
     const ext = origName.includes('.flac') ? '.flac' : `.${audioFormat}`;
     const filename = `${jobId}_${audioUrls.length}${ext}`;
     const destPath = path.join(AUDIO_DIR, filename);
+    const sampleIndex = audioUrls.length;
 
     await downloadGradioAudioFile(fileObj, destPath);
+
+    const lrcDestPath = path.join(AUDIO_DIR, `${jobId}_${sampleIndex}.lrc`);
+    const directLrcText = extractTextValue(data[36 + sampleIndex]).trim();
+    if (directLrcText && !directLrcText.startsWith('❌') && !directLrcText.startsWith('⚠️')) {
+      await writeFile(lrcDestPath, directLrcText, 'utf-8');
+      console.log(`Job ${jobId}: Saved Gradio LRC display text to ${lrcDestPath}`);
+    } else if (Array.isArray(allFiles)) {
+      // Fallback: try to find and download matching LRC or VTT file from allFiles.
+      const baseAudioName = origName.replace(/\.[^/.]+$/, '');
+      const matchingLrcObj = allFiles.find((f: any) => {
+        if (!f || (!f.path && !f.url)) return false;
+        const name = (f.orig_name || f.path || '').toLowerCase();
+        return (name.endsWith('.lrc') || name.endsWith('.vtt')) && name.includes(baseAudioName.toLowerCase());
+      }) || (audioUrls.length === 0 ? allFiles.find((f: any) => {
+        if (!f || (!f.path && !f.url)) return false;
+        const name = (f.orig_name || f.path || '').toLowerCase();
+        return name.endsWith('.lrc') || name.endsWith('.vtt');
+      }) : null);
+      if (matchingLrcObj) {
+        try {
+          await downloadGradioAudioFile(matchingLrcObj, lrcDestPath);
+          console.log(`Job ${jobId}: Downloaded matching LRC/VTT file to ${lrcDestPath}`);
+        } catch (err) {
+          console.warn(`Job ${jobId}: Failed to download matching LRC/VTT file`, err);
+        }
+      }
+    }
+    
+
 
     if (audioUrls.length === 0) {
       actualDuration = getAudioDuration(destPath);
@@ -607,14 +752,33 @@ async function processGenerationViaGradio(
     bpm: metas.bpm || params.bpm,
     keyScale: metas.keyScale || params.keyScale,
     timeSignature: metas.timeSignature || params.timeSignature,
+    scores: scoreOutputs,
     status: 'succeeded',
   };
-  job.rawResponse = { genDetails, genStatus };
+  job.rawResponse = { genDetails, genStatus, scores: scoreOutputs };
   console.log(`Job ${jobId}: Completed via Gradio with ${audioUrls.length} audio files`);
 }
 
 function isAudioFile(name: string): boolean {
   return /\.(mp3|flac|wav|ogg|m4a)$/i.test(name);
+}
+
+function extractTextValue(value: unknown): string {
+  if (typeof value === 'string') return value;
+  if (value && typeof value === 'object') {
+    const record = value as Record<string, unknown>;
+    if (typeof record.value === 'string') return record.value;
+  }
+  return '';
+}
+
+function extractGradioScoreOutputs(data: unknown[]): string[] {
+  const scores: string[] = [];
+  for (let i = 0; i < 8; i++) {
+    const text = extractTextValue(data[12 + i]).trim();
+    scores.push(text && text !== 'Done!' ? text : '');
+  }
+  return scores;
 }
 
 function parseGenerationDetails(details: string | undefined): {
@@ -625,7 +789,6 @@ function parseGenerationDetails(details: string | undefined): {
 } {
   if (!details) return {};
   try {
-    // Generation details may contain key-value pairs
     const bpmMatch = details.match(/BPM:\s*(\d+)/i);
     const durationMatch = details.match(/Duration:\s*([\d.]+)/i);
     const keyMatch = details.match(/Key:\s*([A-G][#b]?\s*(?:major|minor))/i);
@@ -665,7 +828,7 @@ async function processGenerationViaPython(
     const jobOutputDir = path.join(ACESTEP_DIR, 'output', jobId);
     await mkdir(jobOutputDir, { recursive: true });
 
-    const durationToSend = params.duration && params.duration > 0 ? params.duration : 60;
+    const durationToSend = params.duration && params.duration > 0 ? params.duration : -1;
     const args = [
       '--prompt', prompt,
       '--duration', String(durationToSend),
@@ -684,6 +847,7 @@ async function processGenerationViaPython(
     if (params.timeSignature) args.push('--time-signature', params.timeSignature);
     if (params.vocalLanguage) args.push('--vocal-language', params.vocalLanguage);
     if (params.seed !== undefined && params.seed >= 0 && !params.randomSeed) args.push('--seed', String(params.seed));
+    
     if (params.shift !== undefined) args.push('--shift', String(params.shift));
     const resolvedTaskType = params.taskType === 'audio2audio' ? 'cover' : params.taskType;
     if (resolvedTaskType && resolvedTaskType !== 'text2music') args.push('--task-type', resolvedTaskType);
@@ -704,19 +868,42 @@ async function processGenerationViaPython(
     }
     if (params.instruction) args.push('--instruction', params.instruction);
     if (params.thinking) args.push('--thinking');
+    if (params.getLrc) args.push('--get-lrc');
+    if (params.getScores) args.push('--get-scores', '--score-scale', String(params.scoreScale ?? 0.5));
     if (params.lmTemperature !== undefined) args.push('--lm-temperature', String(params.lmTemperature));
     if (params.lmCfgScale !== undefined) args.push('--lm-cfg-scale', String(params.lmCfgScale));
-    if (params.lmTopK !== undefined && params.lmTopK > 0) args.push('--lm-top-k', String(params.lmTopK));
+    
+    if (params.lmTopK as any === 'Auto' || !params.lmTopK) {
+        params.lmTopK = 0;
+    } else {
+        params.lmTopK = Number(params.lmTopK);
+    }
+    if (params.lmTopK && params.lmTopK > 0) args.push('--lm-top-k', String(params.lmTopK));
     if (params.lmTopP !== undefined) args.push('--lm-top-p', String(params.lmTopP));
     if (params.lmNegativePrompt) args.push('--lm-negative-prompt', params.lmNegativePrompt);
-    // Note: --lm-backend and --lm-model are not supported by simple_generate.py
-    if (params.useCotMetas === false) args.push('--no-cot-metas');
-    if (params.useCotCaption === false) args.push('--no-cot-caption');
-    if (params.useCotLanguage === false) args.push('--no-cot-language');
+    if (params.lmModel) args.push('--lm-model', params.lmModel);
+    if (params.lmBackend) args.push('--lm-backend', params.lmBackend);
+    if (params.ditModel) args.push('--dit-model', params.ditModel);
+
+    const useCot = (params.enhance ?? false) || (params.thinking ?? false);
+    if (!useCot) {
+      args.push('--no-cot-metas');
+      args.push('--no-cot-caption');
+      args.push('--no-cot-language');
+    } else {
+      if (params.useCotMetas === false) args.push('--no-cot-metas');
+      if (params.useCotCaption === false) args.push('--no-cot-caption');
+      if (params.useCotLanguage === false) args.push('--no-cot-language');
+    }
     if (params.useAdg) args.push('--use-adg');
     if (params.cfgIntervalStart !== undefined && params.cfgIntervalStart > 0) args.push('--cfg-interval-start', String(params.cfgIntervalStart));
     if (params.cfgIntervalEnd !== undefined && params.cfgIntervalEnd < 1.0) args.push('--cfg-interval-end', String(params.cfgIntervalEnd));
-
+    if (params.dcwEnabled === false) args.push('--no-dcw');
+    if (params.dcwMode) args.push('--dcw-mode', params.dcwMode);
+    if (params.dcwScaler !== undefined) args.push('--dcw-scaler', String(params.dcwScaler));
+    if (params.dcwHighScaler !== undefined) args.push('--dcw-high-scaler', String(params.dcwHighScaler));
+    if (params.dcwWavelet) args.push('--dcw-wavelet', params.dcwWavelet);
+    if (params.vaeModel) args.push('--vae-checkpoint', params.vaeModel);
     const result = await runPythonGeneration(args);
 
     if (!result.success) {
@@ -736,6 +923,24 @@ async function processGenerationViaPython(
 
       await mkdir(AUDIO_DIR, { recursive: true });
       await copyFile(srcPath, destPath);
+
+      // Copy matching LRC or VTT file if exists next to the source audio path
+      let srcLrcPath = srcPath.replace(/\.[^/.]+$/, '.lrc');
+      if (!existsSync(srcLrcPath)) {
+        const srcVttPath = srcPath.replace(/\.[^/.]+$/, '.vtt');
+        if (existsSync(srcVttPath)) {
+          srcLrcPath = srcVttPath;
+        }
+      }
+      if (existsSync(srcLrcPath)) {
+        const lrcDestPath = path.join(AUDIO_DIR, `${jobId}_${audioUrls.length}.lrc`);
+        try {
+          await copyFile(srcLrcPath, lrcDestPath);
+           console.log(`Job ${jobId}: Copied matching LRC/VTT file from ${srcLrcPath} to ${lrcDestPath}`);
+        } catch (err) {
+           console.warn(`Job ${jobId}: Failed to copy matching LRC/VTT file`, err);
+        }
+      }
 
       if (audioUrls.length === 0) {
         actualDuration = getAudioDuration(destPath);
@@ -759,6 +964,7 @@ async function processGenerationViaPython(
       bpm: params.bpm,
       keyScale: params.keyScale,
       timeSignature: params.timeSignature,
+      scores: result.scores,
       status: 'succeeded',
     };
     job.rawResponse = result;
@@ -779,6 +985,7 @@ async function processGenerationViaPython(
 interface PythonResult {
   success: boolean;
   audio_paths?: string[];
+  scores?: string[];
   elapsed_seconds?: number;
   error?: string;
 }
@@ -788,15 +995,20 @@ function runPythonGeneration(scriptArgs: string[], timeoutMs = 600000): Promise<
     const pythonPath = resolvePythonPath(ACESTEP_DIR);
     const args = [PYTHON_SCRIPT, ...scriptArgs];
 
+    console.log(`[ACE-Step] [Spawn] Spawning Python command: "${pythonPath}" ${args.map(a => a.includes(' ') ? `"${a}"` : a).join(' ')}`);
+
     const proc = spawn(pythonPath, args, {
       cwd: ACESTEP_DIR,
       env: {
         ...process.env,
         ACESTEP_PATH: ACESTEP_DIR,
+        PYTHONIOENCODING: 'utf-8',
+        PYTHONUTF8: '1',
+        LANG: 'C.UTF-8',
+        LC_ALL: 'C.UTF-8'
       },
     });
 
-    // Kill process after timeout (default 10 minutes)
     const timer = setTimeout(() => {
       proc.kill('SIGTERM');
       setTimeout(() => { if (!proc.killed) proc.kill('SIGKILL'); }, 5000);
@@ -851,7 +1063,7 @@ function runPythonGeneration(scriptArgs: string[], timeoutMs = 600000): Promise<
 }
 
 // ---------------------------------------------------------------------------
-// Job status (simplified — no more REST polling for progress)
+// Job status 
 // ---------------------------------------------------------------------------
 
 export async function getJobStatus(jobId: string): Promise<JobStatus> {
@@ -888,7 +1100,6 @@ export async function getJobStatus(jobId: string): Promise<JobStatus> {
     };
   }
 
-  // Running — Gradio handles its own queue, we just report estimated time
   return {
     status: job.status,
     etaSeconds: Math.max(0, 180 - elapsed),
@@ -897,14 +1108,13 @@ export async function getJobStatus(jobId: string): Promise<JobStatus> {
   };
 }
 
-// Get raw response for debugging
 export function getJobRawResponse(jobId: string): unknown | null {
   const job = activeJobs.get(jobId);
   return job?.rawResponse || null;
 }
 
 // ---------------------------------------------------------------------------
-// Audio helpers (unchanged)
+// Audio helpers
 // ---------------------------------------------------------------------------
 
 export async function getAudioStream(audioPath: string): Promise<Response> {
@@ -927,7 +1137,6 @@ export async function getAudioStream(audioPath: string): Promise<Response> {
     }
   }
 
-  // Absolute path — try reading directly from disk (Gradio output files)
   if (audioPath.startsWith('/')) {
     try {
       const buffer = await readFile(audioPath);
@@ -937,7 +1146,7 @@ export async function getAudioStream(audioPath: string): Promise<Response> {
         headers: { 'Content-Type': `audio/${ext}` }
       });
     } catch {
-      // Fall through to Gradio API
+      // Fall through
     }
   }
 

@@ -1,12 +1,13 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { Song } from '../types';
-import { Play, MoreHorizontal, Heart, ThumbsDown, ListPlus, Pause, Search, Filter, Check, Globe, Lock, Loader2, ThumbsUp, Share2, Video, Info, Clock } from 'lucide-react';
+import { Play, MoreHorizontal, Heart, ThumbsDown, ListPlus, Pause, Search, Filter, Check, Globe, Lock, Loader2, ThumbsUp, Share2, Video, Info, Clock, BarChart3, X } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useI18n } from '../context/I18nContext';
 import { SongDropdownMenu } from './SongDropdownMenu';
 import { ShareModal } from './ShareModal';
 import { AlbumCover } from './AlbumCover';
 import { songsApi } from '../services/api';
+import { getAvatarUrl } from '../utils/avatar';
 
 interface SongListProps {
     songs: Song[];
@@ -41,7 +42,7 @@ type FilterType = 'liked' | 'public' | 'private' | 'generating';
 
 // Map model ID to short display name
 const getModelDisplayName = (modelId?: string): string => {
-    if (!modelId) return 'v1.5';
+    if (!modelId) return 'ACE';
     
     const mapping: Record<string, string> = {
         'acestep-v15-base': '1.5B',
@@ -50,8 +51,93 @@ const getModelDisplayName = (modelId?: string): string => {
         'acestep-v15-turbo-shift3': '1.5TS3',
         'acestep-v15-turbo-continuous': '1.5TC',
         'acestep-v15-turbo': '1.5T',
+        'acestep-v15-xl-turbo': '1.5XL-T',
     };
-    return mapping[modelId] || 'v1.5';
+    return mapping[modelId] || modelId.replace(/^acestep-/, '').replace(/^v/, '').toUpperCase();
+};
+
+const getSongModelId = (song: Song): string | undefined => {
+    return song.ditModel || song.generationParams?.ditModel || song.generationParams?.dit_model;
+};
+
+const getSongScorePayload = (song: Song): unknown => {
+    const record = song as Song & Record<string, unknown>;
+    return record.scores
+        || record.scoreDetails
+        || record.score_details
+        || song.generationParams?.scores
+        || song.generationParams?.scoreDetails
+        || song.generationParams?.score_details
+        || song.generationParams?.score;
+};
+
+const hasRequestedScores = (song: Song): boolean => {
+    return Boolean(song.generationParams?.getScores || song.generationParams?.get_scores || getSongScorePayload(song));
+};
+
+const formatScorePayload = (value: unknown): string => {
+    if (value === undefined || value === null || value === '') {
+        return 'Score output was requested, but no scorer payload was saved for this song.';
+    }
+    if (typeof value === 'string') {
+        return value
+            .replace(/^DiT Lyric Alignment Scores\s*\(Python fallback\)/i, 'Lyric Alignment Scores')
+            .replace(/\n?Sensitivity:\s*[\d.]+\s*$/i, '')
+            .trim();
+    }
+    try {
+        return JSON.stringify(value, null, 2);
+    } catch {
+        return String(value);
+    }
+};
+
+type ParsedLyricAlignmentScore = {
+    globalScore?: string;
+    lmScore: string;
+    ditScore: string;
+    note?: string;
+};
+
+const parseLyricAlignmentScore = (text: string): ParsedLyricAlignmentScore | null => {
+    const globalMatch = text.match(/Global Quality Score:\s*([0-9.]+)/i);
+    const lmMatch = text.match(/LM lyrics alignment score:\s*([0-9.]+)/i);
+    const ditMatch = text.match(/DiT lyrics alignment score:\s*([0-9.]+)/i);
+    if (!lmMatch || !ditMatch) return null;
+
+    const noteMatch = text.match(/Global PMI quality score[^\n]+(?:\n[^\n]+)?/i);
+    return {
+        globalScore: globalMatch?.[1],
+        lmScore: lmMatch[1],
+        ditScore: ditMatch[1],
+        note: noteMatch?.[0],
+    };
+};
+
+const TooltipInfo: React.FC<{ text: string; align?: 'left' | 'right' }> = ({ text, align = 'left' }) => (
+    <span className="relative inline-flex group">
+        <Info size={13} className="text-zinc-400 group-hover:text-zinc-200 transition-colors" />
+        <span
+            className={`pointer-events-none absolute bottom-full z-[120] mb-2 hidden w-64 max-w-[min(16rem,calc(100vw-3rem))] rounded-md border border-zinc-200 bg-white px-3 py-2 text-left text-[11px] font-medium leading-relaxed text-zinc-700 shadow-xl group-hover:block dark:border-white/10 dark:bg-zinc-900 dark:text-zinc-200 ${
+                align === 'right' ? 'right-0 -translate-x-2' : 'left-0 translate-x-2'
+            }`}
+        >
+            {text}
+        </span>
+    </span>
+);
+
+const formatElapsedTime = (start: Date, now: number): string => {
+    const elapsedSec = Math.max(0, Math.floor((now - start.getTime()) / 1000));
+    const minutes = Math.floor(elapsedSec / 60);
+    const seconds = elapsedSec % 60;
+    return `${minutes}:${String(seconds).padStart(2, '0')}`;
+};
+
+const getGenerationStatusText = (song: Song, now: number): string => {
+    if (song.queuePosition) return `Queued #${song.queuePosition}`;
+    const stage = song.stage?.trim() || 'Creating audio';
+    return `${stage} · ${formatElapsedTime(song.createdAt, now)}`;
 };
 
 const createDragPreview = (element: HTMLElement) => {
@@ -116,6 +202,7 @@ export const SongList: React.FC<SongListProps> = ({
     const [isFilterOpen, setIsFilterOpen] = useState(false);
     const [isSelecting, setIsSelecting] = useState(false);
     const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+    const [now, setNow] = useState(() => Date.now());
     const filterRef = useRef<HTMLDivElement>(null);
 
     const FILTERS: { id: FilterType; label: string; icon: React.ReactNode }[] = [
@@ -146,6 +233,12 @@ export const SongList: React.FC<SongListProps> = ({
             });
             return next;
         });
+    }, [songs]);
+
+    useEffect(() => {
+        if (!songs.some(song => song.isGenerating)) return;
+        const interval = window.setInterval(() => setNow(Date.now()), 1000);
+        return () => window.clearInterval(interval);
     }, [songs]);
 
     const toggleFilter = (filterId: FilterType) => {
@@ -367,6 +460,7 @@ export const SongList: React.FC<SongListProps> = ({
                                     isLiked={likedSongIds.has(item.song.id)}
                                     isPlaying={isPlaying}
                                     isOwner={user?.id === item.song.userId}
+                                    now={now}
                                     onPlay={() => onPlay(item.song)}
                                     onSelect={() => onSelect(item.song)}
                                     onToggleSelect={() => {
@@ -428,6 +522,7 @@ interface SongItemProps {
     isLiked: boolean;
     isPlaying: boolean;
     isOwner: boolean;
+    now: number;
     onPlay: () => void;
     onSelect: () => void;
     onToggleSelect: () => void;
@@ -452,6 +547,7 @@ const SongItem: React.FC<SongItemProps> = ({
     isLiked,
     isPlaying,
     isOwner,
+    now,
     onPlay,
     onSelect,
     onToggleSelect,
@@ -467,12 +563,18 @@ const SongItem: React.FC<SongItemProps> = ({
     onCoverSong
 }) => {
     const { token } = useAuth();
+    const hasMeasuredProgress = typeof song.progress === 'number' && song.progress > 0;
     const [showDropdown, setShowDropdown] = useState(false);
     const [shareModalOpen, setShareModalOpen] = useState(false);
+    const [scoreModalOpen, setScoreModalOpen] = useState(false);
     const [imageError, setImageError] = useState(false);
     const [isEditingTitle, setIsEditingTitle] = useState(false);
     const [editedTitle, setEditedTitle] = useState(song.title);
     const titleInputRef = useRef<HTMLInputElement>(null);
+    const scorePayload = getSongScorePayload(song);
+    const scoreRequested = hasRequestedScores(song);
+    const formattedScorePayload = formatScorePayload(scorePayload);
+    const lyricAlignmentScore = parseLyricAlignmentScore(formattedScorePayload);
 
     useEffect(() => {
         if (isEditingTitle && titleInputRef.current) {
@@ -593,7 +695,7 @@ const SongItem: React.FC<SongItemProps> = ({
                     </div>
                 ) : (
                     <div
-                        className={`absolute inset-0 bg-black/40 flex items-center justify-center backdrop-blur-[1px] cursor-pointer transition-opacity duration-200 ${isCurrent ? 'opacity-100' : 'opacity-0 group-hover/image:opacity-100'}`}
+                        className="absolute inset-0 bg-black/40 flex items-center justify-center backdrop-blur-[1px] cursor-pointer opacity-0 group-hover/image:opacity-100 focus-within:opacity-100 transition-opacity duration-200"
                         onClick={(e) => {
                             e.stopPropagation();
                             onPlay();
@@ -638,8 +740,11 @@ const SongItem: React.FC<SongItemProps> = ({
                                 {song.title || (song.isGenerating ? (song.queuePosition ? "Queued..." : "Creating...") : "Untitled")}
                             </h3>
                         )}
-                        <span className="inline-flex items-center justify-center text-[9px] font-bold text-white bg-gradient-to-r from-pink-500 to-purple-500 px-1.5 py-0.5 rounded-sm shadow-sm" title={`DiT model: ${song.ditModel || 'undefined'}`}>
-                            {getModelDisplayName(song.ditModel)}
+                        <span
+                            className="inline-flex items-center justify-center text-[9px] font-bold text-[#16301f] bg-[#8fbc8f] border border-[#a7cda6] px-1.5 py-0.5 rounded-sm shadow-[inset_0_1px_0_rgba(255,255,255,0.35)]"
+                            title={`DiT model: ${getSongModelId(song) || 'unknown'}`}
+                        >
+                            {getModelDisplayName(getSongModelId(song))}
                         </span>
                         {song.isPublic === false && (
                             <Lock size={12} className="text-zinc-400 dark:text-zinc-500" />
@@ -655,8 +760,8 @@ const SongItem: React.FC<SongItemProps> = ({
                                 }
                             }}
                         >
-                            <div className="w-4 h-4 rounded-full bg-purple-500 text-[8px] flex items-center justify-center font-bold text-white">
-                                {(song.creator?.[0] || 'U').toUpperCase()}
+                            <div className="w-4 h-4 rounded-full bg-zinc-100 dark:bg-zinc-900 text-[8px] flex items-center justify-center font-bold text-white overflow-hidden border border-zinc-200 dark:border-white/10">
+                                <img src={getAvatarUrl(song.creator_avatar, song.creator)} alt={song.creator || 'Unknown'} className="w-full h-full object-cover" />
                             </div>
                             <span className="text-xs font-medium text-zinc-500 dark:text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 transition-colors hover:underline">
                                 {song.creator || 'Unknown'}
@@ -668,14 +773,23 @@ const SongItem: React.FC<SongItemProps> = ({
                     </p>
                     {song.isGenerating && (
                         <div className="pt-2">
+                            <div className="flex items-center justify-between gap-3 text-[11px] font-medium text-zinc-500 dark:text-zinc-400 mb-1">
+                                <span className="truncate">
+                                    {getGenerationStatusText(song, now)}
+                                </span>
+                                {hasMeasuredProgress && (
+                                    <span className="font-mono text-zinc-400 dark:text-zinc-500 flex-shrink-0">
+                                        {Math.round(Math.min(1, Math.max(0, song.progress)) * 100)}%
+                                    </span>
+                                )}
+                            </div>
                             <div className="h-1 rounded-full bg-zinc-200/70 dark:bg-white/10 overflow-hidden">
                                 <div
-                                    className={`h-full bg-gradient-to-r from-pink-500 to-purple-600 transition-all ${song.progress === undefined ? 'opacity-40' : ''}`}
+                                    className={`h-full bg-[#8fbc8f] transition-all ${!hasMeasuredProgress ? 'opacity-40 animate-pulse' : ''}`}
                                     style={{
-                                        width: `${Math.min(
-                                            100,
-                                            Math.max(0, ((song.progress ?? 0) > 1 ? (song.progress ?? 0) / 100 : (song.progress ?? 0)) * 100)
-                                        )}%`,
+                                        width: !hasMeasuredProgress
+                                            ? '18%'
+                                            : `${Math.min(100, Math.max(0, song.progress * 100))}%`,
                                     }}
                                 />
                             </div>
@@ -718,6 +832,16 @@ const SongItem: React.FC<SongItemProps> = ({
                         >
                             <Video size={16} />
                         </button>
+
+                        {scoreRequested && (
+                            <button
+                                className="p-2 rounded-full hover:bg-zinc-200 dark:hover:bg-white/5 text-zinc-400 hover:text-black dark:hover:text-white transition-colors"
+                                onClick={(e) => { e.stopPropagation(); setScoreModalOpen(true); }}
+                                title="View scores"
+                            >
+                                <BarChart3 size={16} />
+                            </button>
+                        )}
 
                         <button
                             className="p-2 rounded-full hover:bg-zinc-200 dark:hover:bg-white/5 text-zinc-400 hover:text-black dark:hover:text-white transition-colors ml-auto"
@@ -767,8 +891,8 @@ const SongItem: React.FC<SongItemProps> = ({
             {/* Timestamp */}
             <div className="text-xs font-mono text-zinc-500 dark:text-zinc-600 self-start pt-1">
                 {song.isGenerating ? (
-                    <span className={song.queuePosition ? 'text-amber-500' : 'text-pink-500'}>
-                        {song.queuePosition ? `#${song.queuePosition}` : 'Creating...'}
+                    <span className={song.queuePosition ? 'text-amber-500' : 'text-[#8fbc8f]'}>
+                        {song.queuePosition ? `#${song.queuePosition}` : formatElapsedTime(song.createdAt, now)}
                     </span>
                 ) : song.duration}
             </div>
@@ -779,6 +903,83 @@ const SongItem: React.FC<SongItemProps> = ({
             onClose={() => setShareModalOpen(false)}
             song={song}
         />
+        {scoreModalOpen && (
+            <div
+                className="fixed inset-0 z-[100] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4"
+                onClick={() => setScoreModalOpen(false)}
+            >
+                <div
+                    className="w-full max-w-lg rounded-xl border border-zinc-200 dark:border-white/10 bg-white dark:bg-zinc-950 shadow-2xl overflow-visible"
+                    onClick={(e) => e.stopPropagation()}
+                >
+                    <div className="flex items-center justify-between px-4 py-3 border-b border-zinc-200 dark:border-white/10">
+                        <div>
+                            <h3 className="text-sm font-bold text-zinc-900 dark:text-white">Scores</h3>
+                            <p className="text-xs text-zinc-500 dark:text-zinc-400 truncate max-w-[22rem]">{song.title}</p>
+                        </div>
+                        <button
+                            className="p-2 rounded-full text-zinc-500 hover:text-zinc-900 dark:hover:text-white hover:bg-zinc-100 dark:hover:bg-white/10 transition-colors"
+                            onClick={() => setScoreModalOpen(false)}
+                            title="Close"
+                        >
+                            <X size={16} />
+                        </button>
+                    </div>
+                    <div className="p-4 space-y-4">
+                        {lyricAlignmentScore ? (
+                            <>
+                                <div>
+                                    <div className="flex items-center gap-1.5 text-sm font-semibold text-zinc-900 dark:text-white">
+                                        <span>Lyric Alignment</span>
+                                        <TooltipInfo text="A diagnostic score from ACE-Step. It estimates whether the generated vocal/lyric attention lines up with the provided lyrics. It is useful for comparing takes, not a final music-quality rating." />
+                                    </div>
+                                    <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-1">
+                                        Higher values usually mean the lyrics are more clearly aligned with the generated vocal timing.
+                                    </p>
+                                </div>
+                                <div className={`grid gap-2 ${lyricAlignmentScore.globalScore ? 'grid-cols-1 sm:grid-cols-3' : 'grid-cols-1 sm:grid-cols-2'}`}>
+                                    {lyricAlignmentScore.globalScore && (
+                                        <div className="rounded-lg bg-zinc-100 dark:bg-white/5 p-3">
+                                            <div className="flex items-center gap-1.5 text-xs text-zinc-500 dark:text-zinc-400 mb-1">
+                                                <span>Global quality</span>
+                                                <TooltipInfo text="PMI-based quality score from ACE-Step. It estimates how well the generated audio codes match the prompt, lyrics, and metadata. Higher is usually better." />
+                                            </div>
+                                            <div className="text-2xl font-bold tracking-normal text-zinc-900 dark:text-white">{lyricAlignmentScore.globalScore}</div>
+                                        </div>
+                                    )}
+                                    <div className="rounded-lg bg-zinc-100 dark:bg-white/5 p-3">
+                                        <div className="flex items-center gap-1.5 text-xs text-zinc-500 dark:text-zinc-400 mb-1">
+                                            <span>LM alignment</span>
+                                            <TooltipInfo text="Alignment score measured from the lyric/text-side attention. It reflects how well lyric tokens are being tracked by the conditioning path." />
+                                        </div>
+                                        <div className="text-2xl font-bold tracking-normal text-zinc-900 dark:text-white">{lyricAlignmentScore.lmScore}</div>
+                                    </div>
+                                    <div className="rounded-lg bg-zinc-100 dark:bg-white/5 p-3">
+                                        <div className="flex items-center gap-1.5 text-xs text-zinc-500 dark:text-zinc-400 mb-1">
+                                            <span>DiT alignment</span>
+                                            <TooltipInfo
+                                                align="right"
+                                                text="Alignment score measured from the diffusion model's cross-attention. It is the closer signal for whether generated audio follows the lyric timing."
+                                            />
+                                        </div>
+                                        <div className="text-2xl font-bold tracking-normal text-zinc-900 dark:text-white">{lyricAlignmentScore.ditScore}</div>
+                                    </div>
+                                </div>
+                                {lyricAlignmentScore.note && (
+                                    <p className="rounded-lg bg-zinc-100 dark:bg-white/5 px-3 py-2 text-xs italic leading-relaxed text-zinc-500 dark:text-zinc-400">
+                                        *{lyricAlignmentScore.note}
+                                    </p>
+                                )}
+                            </>
+                        ) : (
+                            <pre className="max-h-72 overflow-auto rounded-lg bg-zinc-950 text-zinc-200 p-3 text-xs leading-relaxed whitespace-pre-wrap">
+                                {formattedScorePayload}
+                            </pre>
+                        )}
+                    </div>
+                </div>
+            </div>
+        )}
         </>
     );
 };
@@ -814,6 +1015,7 @@ const UploadItem: React.FC<{
             isLiked={false}
             isPlaying={false}
             isOwner={false}
+            now={Date.now()}
             onPlay={() => onPlay(track.audio_url, title)}
             onSelect={() => onPlay(track.audio_url, title)}
             onToggleSelect={() => undefined}

@@ -251,9 +251,38 @@ app.get('/api/proxy/image', async (req, res) => {
   }
 });
 
+// Video proxy for CORS-safe canvas rendering
+app.get('/api/proxy/video', async (req, res) => {
+  const url = req.query.url as string;
+  if (!url) {
+    res.status(400).json({ error: 'URL required' });
+    return;
+  }
+
+  try {
+    const response = await fetch(url);
+    if (!response.ok) {
+      res.status(response.status).json({ error: 'Failed to fetch video' });
+      return;
+    }
+
+    const contentType = response.headers.get('content-type') || 'video/mp4';
+    const buffer = await response.arrayBuffer();
+
+    res.setHeader('Content-Type', contentType);
+    res.setHeader('Cache-Control', 'public, max-age=86400');
+    res.send(Buffer.from(buffer));
+  } catch (error) {
+    console.error('Video proxy error:', error);
+    res.status(500).json({ error: 'Failed to proxy video' });
+  }
+});
+
 // Pexels API proxy - accepts API key from header or uses server config
 app.get('/api/pexels/photos', async (req, res) => {
   const query = req.query.query as string;
+  const page = Math.max(1, Math.min(100, Number(req.query.page) || 1));
+  const perPage = Math.max(1, Math.min(40, Number(req.query.per_page) || 30));
   if (!query) {
     res.status(400).json({ error: 'Query required' });
     return;
@@ -269,7 +298,7 @@ app.get('/api/pexels/photos', async (req, res) => {
 
   try {
     const response = await fetch(
-      `https://api.pexels.com/v1/search?query=${encodeURIComponent(query)}&per_page=20&orientation=landscape`,
+      `https://api.pexels.com/v1/search?query=${encodeURIComponent(query)}&per_page=${perPage}&page=${page}&orientation=landscape`,
       { headers: { Authorization: apiKey } }
     );
 
@@ -292,6 +321,8 @@ app.get('/api/pexels/photos', async (req, res) => {
 
 app.get('/api/pexels/videos', async (req, res) => {
   const query = req.query.query as string;
+  const page = Math.max(1, Math.min(100, Number(req.query.page) || 1));
+  const perPage = Math.max(1, Math.min(40, Number(req.query.per_page) || 24));
   if (!query) {
     res.status(400).json({ error: 'Query required' });
     return;
@@ -307,7 +338,7 @@ app.get('/api/pexels/videos', async (req, res) => {
 
   try {
     const response = await fetch(
-      `https://api.pexels.com/videos/search?query=${encodeURIComponent(query)}&per_page=15&orientation=landscape`,
+      `https://api.pexels.com/videos/search?query=${encodeURIComponent(query)}&per_page=${perPage}&page=${page}&orientation=landscape`,
       { headers: { Authorization: apiKey } }
     );
 

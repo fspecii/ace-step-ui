@@ -12,7 +12,7 @@ import { UserProfile } from './components/UserProfile';
 import { SettingsModal } from './components/SettingsModal';
 import { SongProfile } from './components/SongProfile';
 import { Song, GenerationParams, View, Playlist } from './types';
-import { generateApi, songsApi, playlistsApi, getAudioUrl } from './services/api';
+import { generateApi, songsApi, playlistsApi, getAudioUrl, UserProfile as UserProfileType } from './services/api';
 import { useAuth } from './context/AuthContext';
 import { useResponsive } from './context/ResponsiveContext';
 import { I18nProvider, useI18n } from './context/I18nContext';
@@ -97,9 +97,12 @@ function AppContent() {
 
   // Profile View
   const [viewingUsername, setViewingUsername] = useState<string | null>(null);
+  const [viewingProfilePreview, setViewingProfilePreview] = useState<UserProfileType | null>(null);
+  const [profileReturnView, setProfileReturnView] = useState<View>('create');
 
   // Song View
   const [viewingSongId, setViewingSongId] = useState<string | null>(null);
+  const [viewingSongPreview, setViewingSongPreview] = useState<Song | null>(null);
 
   // Playlist View
   const [viewingPlaylistId, setViewingPlaylistId] = useState<string | null>(null);
@@ -206,6 +209,22 @@ function AppContent() {
 
   // Navigate to Profile Handler
   const handleNavigateToProfile = (username: string) => {
+    const previewSource =
+      currentSong?.creator === username ? currentSong :
+      selectedSong?.creator === username ? selectedSong :
+      songs.find(song => song.creator === username) || null;
+    const fallbackId = user?.username === username ? user.id : previewSource?.userId || username;
+    setViewingProfilePreview({
+      id: fallbackId,
+      username,
+      avatar_url: user?.username === username ? user.avatar_url : previewSource?.creator_avatar,
+      banner_url: user?.username === username ? user.banner_url : undefined,
+      bio: user?.username === username ? user.bio : undefined,
+      created_at: user?.createdAt || new Date().toISOString(),
+    });
+    if (currentView !== 'profile') {
+      setProfileReturnView(currentView);
+    }
     setViewingUsername(username);
     setCurrentView('profile');
     window.history.pushState({}, '', `/@${username}`);
@@ -214,12 +233,26 @@ function AppContent() {
   // Back from Profile Handler
   const handleBackFromProfile = () => {
     setViewingUsername(null);
-    setCurrentView('create');
-    window.history.pushState({}, '', '/');
+    setViewingProfilePreview(null);
+    setCurrentView(profileReturnView);
+    const returnPath =
+      profileReturnView === 'search' ? '/search' :
+      profileReturnView === 'library' ? '/library' :
+      profileReturnView === 'song' && viewingSongId ? `/song/${viewingSongId}` :
+      profileReturnView === 'playlist' && viewingPlaylistId ? `/playlist/${viewingPlaylistId}` :
+      profileReturnView === 'training' ? '/training' :
+      profileReturnView === 'news' ? '/news' :
+      '/';
+    window.history.pushState({}, '', returnPath);
   };
 
   // Navigate to Song Handler
   const handleNavigateToSong = (songId: string) => {
+    const previewSong =
+      currentSong?.id === songId ? currentSong :
+      selectedSong?.id === songId ? selectedSong :
+      songs.find(song => song.id === songId) || null;
+    setViewingSongPreview(previewSong);
     setViewingSongId(songId);
     setCurrentView('song');
     window.history.pushState({}, '', `/song/${songId}`);
@@ -228,6 +261,7 @@ function AppContent() {
   // Back from Song Handler
   const handleBackFromSong = () => {
     setViewingSongId(null);
+    setViewingSongPreview(null);
     setCurrentView('create');
     window.history.pushState({}, '', '/');
   };
@@ -383,6 +417,13 @@ function AppContent() {
     }
   }, [currentView, loadReferenceTracks]);
 
+  useEffect(() => {
+    if (currentView !== 'song' || !currentSong?.id) return;
+    if (viewingSongId === currentSong.id) return;
+    setViewingSongPreview(currentSong);
+    setViewingSongId(currentSong.id);
+  }, [currentView, currentSong?.id, viewingSongId]);
+
   // Player Logic
   const getActiveQueue = (song?: Song) => {
     if (playQueue.length > 0) return playQueue;
@@ -429,6 +470,7 @@ function AppContent() {
       if (candidate.audioUrl && !candidate.isGenerating) {
         setQueueIndex(nextIndex);
         setCurrentSong(candidate);
+        setSelectedSong(candidate);
         setIsPlaying(true);
         return;
       }
@@ -474,6 +516,7 @@ function AppContent() {
       if (candidate.audioUrl && !candidate.isGenerating) {
         setQueueIndex(prevIndex);
         setCurrentSong(candidate);
+        setSelectedSong(candidate);
         setIsPlaying(true);
         return;
       }
@@ -762,8 +805,14 @@ function AppContent() {
     duration: '--:--',
     createdAt: createdAt ? new Date(createdAt) : new Date(),
     isGenerating: true,
+    stage: 'Queued',
     tags: params.customMode ? ['custom'] : ['simple'],
     isPublic: true,
+    userId: user?.id,
+    creator: user?.username,
+    creator_avatar: user?.avatar_url,
+    ditModel: params.ditModel,
+    generationParams: params,
   });
 
   // Handlers
@@ -788,8 +837,14 @@ function AppContent() {
       duration: '--:--',
       createdAt: new Date(),
       isGenerating: true,
+      stage: 'Submitting job...',
       tags: params.customMode ? ['custom'] : ['simple'],
-      isPublic: true
+      isPublic: true,
+      userId: user?.id,
+      creator: user?.username,
+      creator_avatar: user?.avatar_url,
+      ditModel: params.ditModel,
+      generationParams: params,
     };
 
     setSongs(prev => [tempSong, ...prev]);
@@ -852,6 +907,13 @@ function AppContent() {
         trackName: params.trackName,
         completeTrackClasses: params.completeTrackClasses,
         isFormatCaption: params.isFormatCaption,
+        ditModel: params.ditModel,
+        dcwEnabled: params.dcwEnabled,
+        dcwMode: params.dcwMode,
+        dcwScaler: params.dcwScaler,
+        dcwHighScaler: params.dcwHighScaler,
+        dcwWavelet: params.dcwWavelet,
+        vaeModel: params.vaeModel,
       }, token);
 
       beginPollingJob(job.jobId, tempId);
@@ -961,6 +1023,26 @@ function AppContent() {
       setSelectedSong(song);
     }
     setShowRightSidebar(true);
+  };
+
+  const playSongAtTime = (song: Song, time: number) => {
+    if (!song.audioUrl) {
+      showToast(t('songNotAvailable'), 'error');
+      return;
+    }
+
+    const safeTime = Math.max(0, time);
+    if (currentSong?.id === song.id) {
+      handleSeek(safeTime);
+      setIsPlaying(true);
+      setSelectedSong(song);
+      setShowRightSidebar(true);
+      return;
+    }
+
+    pendingSeekRef.current = safeTime;
+    playSong(song);
+    setIsPlaying(true);
   };
 
   const handleSeek = (time: number) => {
@@ -1240,6 +1322,7 @@ function AppContent() {
         return (
           <UserProfile
             username={viewingUsername}
+            initialUser={viewingProfilePreview}
             onBack={handleBackFromProfile}
             onPlaySong={playSong}
             onNavigateToProfile={handleNavigateToProfile}
@@ -1271,11 +1354,14 @@ function AppContent() {
         return (
           <SongProfile
             songId={viewingSongId}
+            initialSong={viewingSongPreview}
             onBack={handleBackFromSong}
             onPlay={playSong}
             onNavigateToProfile={handleNavigateToProfile}
             currentSong={currentSong}
             isPlaying={isPlaying}
+            currentTime={currentTime}
+            onPlayAtTime={playSongAtTime}
             likedSongIds={likedSongIds}
             onToggleLike={toggleLike}
           />
@@ -1442,6 +1528,7 @@ function AppContent() {
         isLiked={currentSong ? likedSongIds.has(currentSong.id) : false}
         onToggleLike={() => currentSong && toggleLike(currentSong.id)}
         onNavigateToSong={handleNavigateToSong}
+        onNavigateToProfile={handleNavigateToProfile}
         onOpenVideo={() => currentSong && openVideoGenerator(currentSong)}
         onReusePrompt={() => currentSong && handleReuse(currentSong)}
         onAddToPlaylist={() => currentSong && openAddToPlaylistModal(currentSong)}

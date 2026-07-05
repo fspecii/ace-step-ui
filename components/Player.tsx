@@ -29,6 +29,7 @@ interface PlayerProps {
     isLiked: boolean;
     onToggleLike: () => void;
     onNavigateToSong?: (songId: string) => void;
+    onNavigateToProfile?: (username: string) => void;
     onOpenVideo?: () => void;
     onReusePrompt?: () => void;
     onAddToPlaylist?: () => void;
@@ -57,6 +58,7 @@ export const Player: React.FC<PlayerProps> = ({
     isLiked,
     onToggleLike,
     onNavigateToSong,
+    onNavigateToProfile,
     onOpenVideo,
     onReusePrompt,
     onAddToPlaylist,
@@ -196,7 +198,16 @@ export const Player: React.FC<PlayerProps> = ({
                                 >
                                     {currentSong.title}
                                 </h2>
-                                <p className="text-sm text-zinc-500 dark:text-white/60 truncate mt-1">
+                                <p
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        if (currentSong.creator) {
+                                            setIsFullscreen(false);
+                                            onNavigateToProfile?.(currentSong.creator);
+                                        }
+                                    }}
+                                    className={`text-sm text-zinc-500 dark:text-white/60 truncate mt-1 ${currentSong.creator ? 'cursor-pointer hover:underline' : ''}`}
+                                >
                                     {currentSong.creator || 'Unknown Artist'}
                                 </p>
                             </div>
@@ -457,7 +468,15 @@ export const Player: React.FC<PlayerProps> = ({
                                 >
                                     {currentSong.title}
                                 </h2>
-                                <p className="text-base lg:text-lg text-zinc-500 dark:text-white/60 truncate mt-2">
+                                <p
+                                    onClick={() => {
+                                        if (currentSong.creator) {
+                                            setIsFullscreen(false);
+                                            onNavigateToProfile?.(currentSong.creator);
+                                        }
+                                    }}
+                                    className={`text-base lg:text-lg text-zinc-500 dark:text-white/60 truncate mt-2 ${currentSong.creator ? 'cursor-pointer hover:underline' : ''}`}
+                                >
                                     {currentSong.creator || 'Unknown Artist'}
                                 </p>
                             </div>
@@ -672,7 +691,12 @@ export const Player: React.FC<PlayerProps> = ({
                         >
                             {currentSong.title}
                         </h4>
-                        <p className="text-[10px] sm:text-xs text-zinc-500 dark:text-zinc-400 truncate hover:underline cursor-pointer">{currentSong.creator || 'Unknown Artist'}</p>
+                        <p
+                            onClick={() => currentSong.creator && onNavigateToProfile?.(currentSong.creator)}
+                            className={`text-[10px] sm:text-xs text-zinc-500 dark:text-zinc-400 truncate ${currentSong.creator ? 'hover:underline cursor-pointer' : ''}`}
+                        >
+                            {currentSong.creator || 'Unknown Artist'}
+                        </p>
                     </div>
                     <button
                         onClick={onToggleLike}

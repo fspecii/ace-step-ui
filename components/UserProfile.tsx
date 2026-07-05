@@ -4,9 +4,11 @@ import { usersApi, getAudioUrl, UserProfile as UserProfileType, songsApi } from 
 import { useAuth } from '../context/AuthContext';
 import { ArrowLeft, Play, Pause, Heart, Eye, Users, Music as MusicIcon, ChevronRight, Share2, MoreHorizontal, Edit3, X, Camera, Image as ImageIcon, Upload, Loader2 } from 'lucide-react';
 import { useI18n } from '../context/I18nContext';
+import { getAvatarUrl } from '../utils/avatar';
 
 interface UserProfileProps {
     username: string;
+    initialUser?: UserProfileType | null;
     onBack: () => void;
     onPlaySong: (song: Song, list?: Song[]) => void;
     onNavigateToProfile: (username: string) => void;
@@ -17,14 +19,14 @@ interface UserProfileProps {
     onToggleLike?: (songId: string) => void;
 }
 
-export const UserProfile: React.FC<UserProfileProps> = ({ username, onBack, onPlaySong, onNavigateToProfile, onNavigateToPlaylist, currentSong, isPlaying, likedSongIds = new Set(), onToggleLike }) => {
+export const UserProfile: React.FC<UserProfileProps> = ({ username, initialUser = null, onBack, onPlaySong, onNavigateToProfile, onNavigateToPlaylist, currentSong, isPlaying, likedSongIds = new Set(), onToggleLike }) => {
     const { t, language } = useI18n();
     const { user: currentUser, token } = useAuth();
-    const [profileUser, setProfileUser] = useState<UserProfileType | null>(null);
+    const [profileUser, setProfileUser] = useState<UserProfileType | null>(initialUser);
     const [publicSongs, setPublicSongs] = useState<Song[]>([]);
     const [publicPlaylists, setPublicPlaylists] = useState<Playlist[]>([]);
     const [songsTab, setSongsTab] = useState<'recent' | 'top'>('recent');
-    const [loading, setLoading] = useState(true);
+    const [loading, setLoading] = useState(!initialUser);
 
     // Edit State
     const [isEditModalOpen, setIsEditModalOpen] = useState(false);
@@ -43,10 +45,17 @@ export const UserProfile: React.FC<UserProfileProps> = ({ username, onBack, onPl
     const bannerInputRef = useRef<HTMLInputElement>(null);
 
     useEffect(() => {
-        loadUserProfile();
-    }, [username]);
+        let cancelled = false;
+        if (initialUser?.username === username) {
+            setProfileUser(initialUser);
+        }
+        loadUserProfile(() => cancelled);
+        return () => {
+            cancelled = true;
+        };
+    }, [username, initialUser]);
 
-    const loadUserProfile = async () => {
+    const loadUserProfile = async (isCancelled: () => boolean = () => false) => {
         setLoading(true);
         try {
             const [profileRes, songsRes, playlistsRes] = await Promise.all([
@@ -54,6 +63,7 @@ export const UserProfile: React.FC<UserProfileProps> = ({ username, onBack, onPl
                 usersApi.getPublicSongs(username),
                 usersApi.getPublicPlaylists(username)
             ]);
+            if (isCancelled()) return;
 
             setProfileUser(profileRes.user);
             setEditBio(profileRes.user.bio || '');
@@ -78,9 +88,10 @@ export const UserProfile: React.FC<UserProfileProps> = ({ username, onBack, onPl
             setPublicSongs(transformedSongs);
             setPublicPlaylists(playlistsRes.playlists || []);
         } catch (error) {
+            if (isCancelled()) return;
             console.error('Failed to load user profile:', error);
         } finally {
-            setLoading(false);
+            if (!isCancelled()) setLoading(false);
         }
     };
 
@@ -155,7 +166,7 @@ export const UserProfile: React.FC<UserProfileProps> = ({ username, onBack, onPl
         }
     };
 
-    if (loading) {
+    if (loading && !profileUser) {
         return (
             <div className="flex items-center justify-center h-full bg-zinc-50 dark:bg-black">
                 <div className="text-zinc-500 dark:text-zinc-400 gap-2 flex items-center">
@@ -235,7 +246,7 @@ export const UserProfile: React.FC<UserProfileProps> = ({ username, onBack, onPl
     const displaySongs = songsTab === 'recent' ? publicSongs : [...publicSongs].sort((a, b) => (b.likeCount || 0) - (a.likeCount || 0));
 
     return (
-        <div className="w-full h-full flex flex-col bg-zinc-50 dark:bg-black overflow-y-auto pb-24 lg:pb-32 relative">
+        <div className={`w-full h-full flex flex-col bg-zinc-50 dark:bg-black overflow-y-auto pb-24 lg:pb-32 relative transition-opacity duration-200 ${loading ? 'opacity-100' : 'opacity-100'}`}>
             {/* Hero Banner */}
             <div className="relative group/banner">
                 {/* Background Banner */}
@@ -272,18 +283,19 @@ export const UserProfile: React.FC<UserProfileProps> = ({ username, onBack, onPl
                         {/* Avatar */}
                         <div className="group/avatar relative">
                             <div className={`w-24 h-24 md:w-40 md:h-40 rounded-full border-4 border-zinc-50 dark:border-black bg-zinc-200 dark:bg-zinc-800 flex items-center justify-center overflow-hidden shadow-2xl ring-4 ${badgeRing} transition-transform ${paidPulse}`}>
-                                {profileUser.avatar_url && !avatarFailed ? (
-                                    <img
-                                        src={profileUser.avatar_url}
-                                        alt={profileUser.username}
-                                        className="w-full h-full object-cover"
-                                        referrerPolicy="no-referrer"
-                                        onError={() => setAvatarFailed(true)}
-                                    />
-                                ) : (
-                                    <div className={`w-full h-full bg-gradient-to-br ${bannerGradient} flex items-center justify-center text-4xl md:text-6xl font-bold text-white`}>
-                                        {profileUser.username[0].toUpperCase()}
-                                    </div>
+                                {!avatarFailed && (
+                                  <img
+                                      src={getAvatarUrl(profileUser.avatar_url, profileUser.username)}
+                                      alt={profileUser.username}
+                                      className="w-full h-full object-cover"
+                                      referrerPolicy="no-referrer"
+                                      onError={() => setAvatarFailed(true)}
+                                  />
+                                )}
+                                {avatarFailed && (
+                                  <div className={`w-full h-full bg-gradient-to-br ${bannerGradient} flex items-center justify-center text-4xl md:text-6xl font-bold text-white`}>
+                                      {profileUser.username[0].toUpperCase()}
+                                  </div>
                                 )}
                             </div>
                             {isOwner && (

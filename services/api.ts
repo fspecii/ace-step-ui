@@ -308,6 +308,12 @@ export interface GenerationParams {
   completeTrackClasses?: string[];
   isFormatCaption?: boolean;
   loraLoaded?: boolean;
+  dcwEnabled?: boolean;
+  dcwMode?: string;
+  dcwScaler?: number;
+  dcwHighScaler?: number;
+  dcwWavelet?: string;
+  vaeModel?: string;
 }
 
 export interface GenerationJob {

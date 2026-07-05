@@ -3,6 +3,7 @@ import { X, User as UserIcon, Palette, Info, Edit3, ExternalLink, Globe, Chevron
 import { useAuth } from '../context/AuthContext';
 import { useI18n } from '../context/I18nContext';
 import { EditProfileModal } from './EditProfileModal';
+import { getAvatarUrl } from '../utils/avatar';
 
 interface SettingsModalProps {
     isOpen: boolean;
@@ -64,12 +65,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, t
                     {/* User Profile Section */}
                     <div className="bg-zinc-50 dark:bg-zinc-800/50 rounded-xl p-6">
                         <div className="flex items-center gap-4">
-                            <div className="w-16 h-16 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-2xl font-bold text-white shadow-lg overflow-hidden">
-                                {user.avatar_url ? (
-                                    <img src={user.avatar_url} alt={user.username} className="w-full h-full object-cover" />
-                                ) : (
-                                    user.username[0].toUpperCase()
-                                )}
+                            <div className="w-16 h-16 rounded-full bg-zinc-100 dark:bg-zinc-900 flex items-center justify-center text-2xl font-bold text-white shadow-lg overflow-hidden border border-zinc-200 dark:border-white/10">
+                                <img src={getAvatarUrl(user.avatar_url, user.username)} alt={user.username} className="w-full h-full object-cover" />
                             </div>
                             <div className="flex-1">
                                 <h3 className="text-xl font-bold text-zinc-900 dark:text-white">@{user.username}</h3>

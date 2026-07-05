@@ -2,6 +2,7 @@ import React from 'react';
 import { Library, Disc, Search, LogIn, LogOut, Sun, Moon, GraduationCap, Newspaper } from 'lucide-react';
 import { View } from '../types';
 import { useI18n } from '../context/I18nContext';
+import { getAvatarUrl } from '../utils/avatar';
 
 interface SidebarProps {
   currentView: View;
@@ -148,12 +149,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 `}
                 title={`${user.username} - ${t('settings')}`}
               >
-                <div className="w-6 h-6 rounded-full bg-gradient-to-br from-pink-500 to-purple-600 flex items-center justify-center text-white text-xs font-bold border border-white/20 overflow-hidden flex-shrink-0">
-                  {user.avatar_url ? (
-                    <img src={user.avatar_url} alt={user.username} className="w-full h-full object-cover" />
-                  ) : (
-                    user.username.charAt(0).toUpperCase()
-                  )}
+                <div className="w-6 h-6 rounded-full bg-zinc-100 dark:bg-zinc-900 flex items-center justify-center text-white text-xs font-bold border border-zinc-200 dark:border-white/10 overflow-hidden flex-shrink-0">
+                  <img src={getAvatarUrl(user.avatar_url, user.username)} alt={user.username} className="w-full h-full object-cover" />
                 </div>
                 {isOpen && (
                   <span className="text-sm font-medium whitespace-nowrap truncate flex-1 text-left">
