@@ -149,9 +149,15 @@ interface GenerateBody {
   trackName?: string;
   completeTrackClasses?: string[];
   isFormatCaption?: boolean;
+  dcwEnabled?: boolean;
+  dcwMode?: string;
+  dcwScaler?: number;
+  dcwHighScaler?: number;
+  dcwWavelet?: string;
 
   // Model selection
   ditModel?: string;
+  vaeModel?: string;
 }
 
 router.post('/upload-audio', authMiddleware, (req: AuthenticatedRequest, res: Response, next: Function) => {
@@ -265,6 +271,12 @@ router.post('/', authMiddleware, async (req: AuthenticatedRequest, res: Response
       completeTrackClasses,
       isFormatCaption,
       ditModel,
+      dcwEnabled,
+      dcwMode,
+      dcwScaler,
+      dcwHighScaler,
+      dcwWavelet,
+      vaeModel,
     } = req.body as GenerateBody;
 
     if (!customMode && !songDescription) {
@@ -333,6 +345,12 @@ router.post('/', authMiddleware, async (req: AuthenticatedRequest, res: Response
       completeTrackClasses,
       isFormatCaption,
       ditModel,
+      dcwEnabled,
+      dcwMode,
+      dcwScaler,
+      dcwHighScaler,
+      dcwWavelet,
+      vaeModel,
     };
 
     // Create job record in database
@@ -668,7 +686,34 @@ router.get('/models', async (_req, res: Response) => {
       return a.name.localeCompare(b.name);
     });
 
-    res.json({ models });
+    // Scan for available VAE checkpoints
+    const vaeModels = [
+      { name: 'official', is_preloaded: true },
+      { name: 'scragvae', is_preloaded: existsSync(path.join(checkpointsDir, 'scragvae')) },
+    ];
+
+    try {
+      const { readdirSync } = await import('fs');
+      for (const entry of readdirSync(checkpointsDir)) {
+        if (!['vae', 'scragvae', 'Qwen3-Embedding-0.6B', 'acestep-5Hz-lm-0.6B', 'acestep-5Hz-lm-1.7B', 'acestep-5Hz-lm-4B'].includes(entry) && 
+            !entry.startsWith('acestep-v15-') &&
+            statSync(path.join(checkpointsDir, entry)).isDirectory()) {
+          const entryPath = path.join(checkpointsDir, entry);
+          if (existsSync(path.join(entryPath, 'diffusion_pytorch_model.safetensors')) || 
+              existsSync(path.join(entryPath, 'model.safetensors')) || 
+              existsSync(path.join(entryPath, 'pytorch_model.bin'))) {
+            if (!vaeModels.some(v => v.name === entry)) {
+              vaeModels.push({
+                name: entry,
+                is_preloaded: true
+              });
+            }
+          }
+        }
+      }
+    } catch { /* checkpoints dir may not exist */ }
+
+    res.json({ models, vaeModels });
   } catch (error) {
     console.error('Models error:', error);
     res.status(500).json({ error: (error as Error).message });

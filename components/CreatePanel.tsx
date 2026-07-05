@@ -217,6 +217,13 @@ export const CreatePanel: React.FC<CreatePanelProps> = ({
   const [maxDurationWithLm, setMaxDurationWithLm] = useState(240);
   const [maxDurationWithoutLm, setMaxDurationWithoutLm] = useState(240);
 
+  // DCW Parameters
+  const [dcwEnabled, setDcwEnabled] = useState(true);
+  const [dcwMode, setDcwMode] = useState('double');
+  const [dcwScaler, setDcwScaler] = useState(0.05);
+  const [dcwHighScaler, setDcwHighScaler] = useState(0.02);
+  const [dcwWavelet, setDcwWavelet] = useState('haar');
+
   // LoRA Parameters
   const [showLoraPanel, setShowLoraPanel] = useState(false);
   const [loraPath, setLoraPath] = useState('./lora_output/final/adapter');
@@ -237,6 +244,14 @@ export const CreatePanel: React.FC<CreatePanelProps> = ({
   // Available models fetched from backend
   const [fetchedModels, setFetchedModels] = useState<{ name: string; is_active: boolean; is_preloaded: boolean }[]>([]);
 
+  // VAE selection
+  const [selectedVae, setSelectedVae] = useState<string>(() => {
+    return localStorage.getItem('ace-vae') || 'official';
+  });
+  const [fetchedVaeModels, setFetchedVaeModels] = useState<{ name: string; is_preloaded: boolean }[]>([]);
+  const [showVaeMenu, setShowVaeMenu] = useState(false);
+  const vaeMenuRef = useRef<HTMLDivElement>(null);
+
   // Fallback model list when backend is unavailable
   const availableModels = useMemo(() => {
     if (fetchedModels.length > 0) {
@@ -249,8 +264,19 @@ export const CreatePanel: React.FC<CreatePanelProps> = ({
       { id: 'acestep-v15-turbo-shift1', name: 'acestep-v15-turbo-shift1' },
       { id: 'acestep-v15-turbo-shift3', name: 'acestep-v15-turbo-shift3' },
       { id: 'acestep-v15-turbo-continuous', name: 'acestep-v15-turbo-continuous' },
+      { id: 'acestep-v15-xl-turbo', name: 'acestep-v15-xl-turbo' },
     ];
   }, [fetchedModels]);
+
+  const availableVaeModels = useMemo(() => {
+    if (fetchedVaeModels.length > 0) {
+      return fetchedVaeModels.map(v => ({ id: v.name, name: v.name, is_preloaded: v.is_preloaded }));
+    }
+    return [
+      { id: 'official', name: 'official', is_preloaded: true },
+      { id: 'scragvae', name: 'scragvae', is_preloaded: false },
+    ];
+  }, [fetchedVaeModels]);
 
   // Map model ID to short display name
   const getModelDisplayName = (modelId: string): string => {
@@ -261,6 +287,7 @@ export const CreatePanel: React.FC<CreatePanelProps> = ({
       'acestep-v15-turbo-shift3': '1.5TS3',
       'acestep-v15-turbo-continuous': '1.5TC',
       'acestep-v15-turbo': '1.5T',
+      'acestep-v15-xl-turbo': '1.5XL-T',
     };
     return mapping[modelId] || modelId;
   };
@@ -352,6 +379,20 @@ export const CreatePanel: React.FC<CreatePanelProps> = ({
       return () => document.removeEventListener('mousedown', handleClickOutside);
     }
   }, [showModelMenu]);
+
+  // Close VAE menu when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (vaeMenuRef.current && !vaeMenuRef.current.contains(event.target as Node)) {
+        setShowVaeMenu(false);
+      }
+    };
+
+    if (showVaeMenu) {
+      document.addEventListener('mousedown', handleClickOutside);
+      return () => document.removeEventListener('mousedown', handleClickOutside);
+    }
+  }, [showVaeMenu]);
 
   // Auto-unload LoRA when model changes
   useEffect(() => {
@@ -568,6 +609,11 @@ export const CreatePanel: React.FC<CreatePanelProps> = ({
             setSelectedModel(active.name);
             localStorage.setItem('ace-model', active.name);
           }
+        }
+
+        const vaes = data.vaeModels || [];
+        if (vaes.length > 0) {
+          setFetchedVaeModels(vaes);
         }
       }
     } catch {
@@ -1049,6 +1095,12 @@ export const CreatePanel: React.FC<CreatePanelProps> = ({
         })(),
         isFormatCaption,
         loraLoaded,
+        dcwEnabled,
+        dcwMode,
+        dcwScaler,
+        dcwHighScaler,
+        dcwWavelet,
+        vaeModel: selectedVae,
       });
     }
 
@@ -1202,6 +1254,61 @@ export const CreatePanel: React.FC<CreatePanelProps> = ({
                 </div>
               )}
             </div>
+          </div>
+        </div>
+
+        {/* VAE Selection Row */}
+        <div className="flex items-center justify-between mt-3 px-1">
+          <span className="text-xs font-bold text-zinc-500 dark:text-zinc-400 uppercase tracking-wider">
+            VAE SELECT
+          </span>
+          <div className="relative" ref={vaeMenuRef}>
+            <button
+              type="button"
+              onClick={() => setShowVaeMenu(!showVaeMenu)}
+              className="bg-zinc-200 dark:bg-black/40 border border-zinc-300 dark:border-white/5 rounded-md px-2 py-1 text-[11px] font-medium text-zinc-900 dark:text-white hover:bg-zinc-300 dark:hover:bg-black/50 transition-colors flex items-center gap-1"
+              disabled={availableVaeModels.length === 0}
+            >
+              {availableVaeModels.length === 0 ? '...' : (selectedVae === 'official' ? 'Official VAE' : selectedVae)}
+              <ChevronDown size={10} className="text-zinc-600 dark:text-zinc-400" />
+            </button>
+            
+            {/* Floating VAE Menu */}
+            {showVaeMenu && availableVaeModels.length > 0 && (
+              <div className="absolute top-full right-0 mt-1 w-64 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded-xl shadow-2xl z-50 overflow-hidden">
+                <div className="max-h-64 overflow-y-auto custom-scrollbar">
+                  {availableVaeModels.map(vae => (
+                    <button
+                      key={vae.id}
+                      type="button"
+                      onClick={() => {
+                        setSelectedVae(vae.id);
+                        localStorage.setItem('ace-vae', vae.id);
+                        setShowVaeMenu(false);
+                      }}
+                      className={`w-full px-4 py-2.5 text-left hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors border-b border-zinc-100 dark:border-zinc-800 last:border-b-0 ${
+                        selectedVae === vae.id ? 'bg-zinc-50 dark:bg-zinc-800/50' : ''
+                      }`}
+                    >
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-semibold text-zinc-900 dark:text-white">
+                          {vae.id === 'official' ? 'Official VAE (Oobleck)' : vae.name}
+                        </span>
+                        {vae.is_preloaded ? (
+                          <span className="px-1.5 py-0.5 rounded text-[8px] font-bold bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400">
+                            Ready
+                          </span>
+                        ) : (
+                          <span className="px-1.5 py-0.5 rounded text-[8px] font-bold bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400">
+                            Download
+                          </span>
+                        )}
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         </div>
 
@@ -2433,6 +2540,93 @@ export const CreatePanel: React.FC<CreatePanelProps> = ({
                 <input type="checkbox" checked={getLrc} onChange={() => setGetLrc(!getLrc)} />
                 {t('getLrcLyrics')}
               </label>
+            </div>
+
+            {/* DCW Settings Section */}
+            <div className="grid space-y-1.5 border-t border-zinc-200 dark:border-white/5 pt-4 mt-3">
+              <h4 className="text-xs font-bold text-zinc-500 dark:text-zinc-400 uppercase tracking-wide">
+                DCW Settings
+              </h4>
+              <div className="flex items-center justify-between py-1">
+                <span className="text-xs font-medium text-zinc-600 dark:text-zinc-400" title="Enable Dual Conditioning Wavelet guidance.">
+                  Enable DCW
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setDcwEnabled(!dcwEnabled)}
+                  className={`w-10 h-5 rounded-full flex items-center transition-colors duration-200 px-0.5 border border-zinc-200 dark:border-white/5 ${dcwEnabled ? 'bg-pink-600' : 'bg-zinc-300 dark:bg-black/40'} cursor-pointer`}
+                >
+                  <div className={`w-4 h-4 rounded-full bg-white transform transition-transform duration-200 shadow-sm ${dcwEnabled ? 'translate-x-5' : 'translate-x-0'}`} />
+                </button>
+              </div>
+
+              {dcwEnabled && (
+                <div className="space-y-3">
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-medium text-zinc-500 dark:text-zinc-400">DCW Wavelet Base</label>
+                      <select
+                        value={dcwWavelet}
+                        onChange={(e) => setDcwWavelet(e.target.value)}
+                        className="w-full bg-zinc-50 dark:bg-black/20 border border-zinc-200 dark:border-white/10 rounded-lg px-2 py-1 text-xs text-zinc-900 dark:text-white focus:outline-none cursor-pointer [&>option]:bg-white [&>option]:dark:bg-zinc-800"
+                      >
+                        <option value="haar">Haar</option>
+                        <option value="db2">DB2</option>
+                        <option value="db4">DB4</option>
+                        <option value="sym4">Sym4</option>
+                        <option value="sym8">Sym8</option>
+                        <option value="coif2">Coif2</option>
+                      </select>
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-medium text-zinc-500 dark:text-zinc-400">DCW Mode</label>
+                      <select
+                        value={dcwMode}
+                        onChange={(e) => setDcwMode(e.target.value)}
+                        className="w-full bg-zinc-50 dark:bg-black/20 border border-zinc-200 dark:border-white/10 rounded-lg px-2 py-1 text-xs text-zinc-900 dark:text-white focus:outline-none cursor-pointer [&>option]:bg-white [&>option]:dark:bg-zinc-800"
+                      >
+                        <option value="low">Low</option>
+                        <option value="double">Double</option>
+                        <option value="high">High</option>
+                        <option value="pix">Pix</option>
+                        <option value="none">None</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  <div className="space-y-1">
+                    <div className="flex justify-between items-center text-[10px] font-medium text-zinc-500 dark:text-zinc-400">
+                      <span>DCW Scaler</span>
+                      <span>{dcwScaler}</span>
+                    </div>
+                    <input
+                      type="range"
+                      min="0.0"
+                      max="1.0"
+                      step="0.01"
+                      value={dcwScaler}
+                      onChange={(e) => setDcwScaler(parseFloat(e.target.value))}
+                      className="w-full h-1 bg-zinc-200 dark:bg-zinc-700 rounded-lg appearance-none cursor-pointer accent-pink-600"
+                    />
+                  </div>
+
+                  <div className="space-y-1">
+                    <div className="flex justify-between items-center text-[10px] font-medium text-zinc-500 dark:text-zinc-400">
+                      <span>DCW High Scaler</span>
+                      <span>{dcwHighScaler}</span>
+                    </div>
+                    <input
+                      type="range"
+                      min="0.0"
+                      max="1.0"
+                      step="0.01"
+                      value={dcwHighScaler}
+                      onChange={(e) => setDcwHighScaler(parseFloat(e.target.value))}
+                      className="w-full h-1 bg-zinc-200 dark:bg-zinc-700 rounded-lg appearance-none cursor-pointer accent-pink-600"
+                    />
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         )}

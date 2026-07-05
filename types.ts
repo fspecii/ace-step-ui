@@ -120,6 +120,12 @@ export interface GenerationParams {
   trackName?: string;
   completeTrackClasses?: string[];
   isFormatCaption?: boolean;
+  dcwEnabled?: boolean;
+  dcwMode?: string;
+  dcwScaler?: number;
+  dcwHighScaler?: number;
+  dcwWavelet?: string;
+  vaeModel?: string;
 }
 
 export interface PlayerState {

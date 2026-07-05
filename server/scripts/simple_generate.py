@@ -14,6 +14,30 @@ import torch
 # Get ACE-Step path from environment or use default
 ACESTEP_PATH = os.environ.get('ACESTEP_PATH', '/home/ambsd/Desktop/aceui/ACE-Step-1.5')
 
+# Load .env file from ACE-Step path if it exists to populate os.environ
+env_path = os.path.join(ACESTEP_PATH, '.env')
+if not os.path.exists(env_path):
+    env_path = os.path.join(ACESTEP_PATH, 'env')
+
+# Diagnostic logging for visibility in Node.js
+print(f"[simple_generate] ACESTEP_PATH: '{ACESTEP_PATH}'", file=sys.stderr)
+print(f"[simple_generate] Checked env_path: '{env_path}' (exists: {os.path.exists(env_path)})", file=sys.stderr)
+
+if os.path.exists(env_path):
+    try:
+        with open(env_path, 'r', encoding='utf-8') as f:
+            for line in f:
+                line = line.strip()
+                if line and not line.startswith('#') and '=' in line:
+                    key, val = line.split('=', 1)
+                    key = key.strip()
+                    val = val.strip().strip('"').strip("'")
+                    if key not in os.environ:
+                        os.environ[key] = val
+        print(f"[simple_generate] Successfully loaded environment from {env_path}", file=sys.stderr)
+    except Exception as env_err:
+        print(f"Warning: failed to load config from {env_path}: {env_err}", file=sys.stderr)
+
 # Add ACE-Step to path
 sys.path.insert(0, ACESTEP_PATH)
 
@@ -25,21 +49,41 @@ from acestep.inference import GenerationParams, GenerationConfig, generate_music
 _handler = None
 _llm_handler = None
 
-def get_handlers():
+def get_handlers(dit_model=None, vae_checkpoint=None):
     global _handler, _llm_handler
     if _handler is None:
-        if torch.cuda.is_available():
-            device = "cuda"
-        elif torch.backends.mps.is_available():
-            device = "mps"
+        # Respect device setting from environment/.env if defined
+        env_device = os.environ.get('ACESTEP_DEVICE', 'auto').lower()
+        if env_device in ['cuda', 'cpu', 'mps', 'xpu']:
+            device = env_device
         else:
-            device = "cpu"
+            if torch.cuda.is_available():
+                device = "cuda"
+            elif torch.backends.mps.is_available():
+                device = "mps"
+            else:
+                device = "cpu"
+        
+        # Use frontend selected model, fallback to ACESTEP_CONFIG_PATH from .env, or default to "acestep-v15-turbo"
+        default_config = os.environ.get('ACESTEP_CONFIG_PATH', 'acestep-v15-turbo')
+        config_path = dit_model if (dit_model and dit_model.strip()) else default_config
+        
+        # Use provided VAE, fallback to env var, or default to "official"
+        vae_val = vae_checkpoint if (vae_checkpoint and vae_checkpoint.strip()) else os.environ.get('ACESTEP_VAE_CHECKPOINT', 'official')
+        
+        print(f"[simple_generate] Active configuration settings:", file=sys.stderr)
+        print(f"  - Device: {device}", file=sys.stderr)
+        print(f"  - DiT Model Config: {config_path}", file=sys.stderr)
+        print(f"  - VAE Model Override: {vae_val}", file=sys.stderr)
+        print(f"  - Torch Compile: {os.environ.get('ACESTEP_TORCH_COMPILE', 'default')}", file=sys.stderr)
+        
         _handler = AceStepHandler()
         _handler.initialize_service(
             project_root=ACESTEP_PATH,
-            config_path="acestep-v15-turbo",
+            config_path=config_path,
             device=device,
             offload_to_cpu=True,  # For 12GB GPU
+            vae_checkpoint=vae_val,
         )
         _llm_handler = LLMHandler()  # Create but don't initialize (not enough VRAM)
     return _handler, _llm_handler
@@ -83,17 +127,89 @@ def generate(
     use_cot_metas: bool = True,
     use_cot_caption: bool = True,
     use_cot_language: bool = True,
+    lm_model: str = "",
+    lm_backend: str = "pt",
 
     # Advanced parameters
     use_adg: bool = False,
     cfg_interval_start: float = 0.0,
     cfg_interval_end: float = 1.0,
+    dcw_enabled: bool = True,
+    dcw_mode: str = "double",
+    dcw_scaler: float = None,
+    dcw_high_scaler: float = None,
+    dcw_wavelet: str = "haar",
 
     # Output
     output_dir: str = None,
+
+    # Model selection
+    dit_model: str = "",
+    vae_checkpoint: str = "official",
 ):
     """Generate music and return audio file paths."""
-    handler, llm_handler = get_handlers()
+    handler, llm_handler = get_handlers(dit_model=dit_model, vae_checkpoint=vae_checkpoint)
+
+    # Initialize LLM handler if thinking is requested and it has not been initialized
+    need_llm = (
+        thinking
+        or use_cot_metas
+        or use_cot_caption
+        or use_cot_language
+    )
+
+    if need_llm and not llm_handler.llm_initialized:
+        checkpoint_dir = os.path.join(ACESTEP_PATH, "checkpoints")
+        
+        # Determine backend
+        backend = lm_backend or "pt"
+        if backend == "auto":
+            backend = "pt"
+            
+        # Resolve device
+        if torch.cuda.is_available():
+            device = "cuda"
+        elif torch.backends.mps.is_available():
+            device = "mps"
+        else:
+            device = "cpu"
+
+        # Determine model path
+        lm_model_path = lm_model if (lm_model and lm_model.strip()) else None
+        if not lm_model_path:
+            # Auto-detect existing model on disk
+            if os.path.exists(os.path.join(checkpoint_dir, "acestep-5Hz-lm-4B")):
+                lm_model_path = "acestep-5Hz-lm-4B"
+            elif os.path.exists(os.path.join(checkpoint_dir, "acestep-5Hz-lm-1.7B")):
+                lm_model_path = "acestep-5Hz-lm-1.7B"
+            elif os.path.exists(os.path.join(checkpoint_dir, "acestep-5Hz-lm-0.6B")):
+                lm_model_path = "acestep-5Hz-lm-0.6B"
+            else:
+                lm_model_path = "acestep-5Hz-lm-0.6B"  # Default fallback
+
+        # Check if model exists, if not auto-download
+        model_dir = os.path.join(checkpoint_dir, lm_model_path)
+        if not os.path.exists(model_dir) or not os.listdir(model_dir):
+            print(f"[simple_generate] LLM Model {lm_model_path} not found, downloading...", file=sys.stderr)
+            try:
+                from acestep.model_downloader import download_submodel
+                from pathlib import Path
+                success, msg = download_submodel(lm_model_path, Path(checkpoint_dir))
+                if not success:
+                    print(f"Warning: failed to download submodel {lm_model_path}: {msg}", file=sys.stderr)
+            except Exception as download_err:
+                print(f"Warning: could not download LLM model: {download_err}", file=sys.stderr)
+
+        print(f"[simple_generate] Initializing LLMHandler with model '{lm_model_path}' on device '{device}'...", file=sys.stderr)
+        status, success = llm_handler.initialize(
+            checkpoint_dir=checkpoint_dir,
+            lm_model_path=lm_model_path,
+            backend=backend,
+            device=device,
+            offload_to_cpu=True,
+        )
+        if not success:
+            raise RuntimeError(f"Failed to initialize LLM: {status}")
 
     if output_dir is None:
         output_dir = os.path.join(ACESTEP_PATH, "output")
@@ -142,6 +258,11 @@ def generate(
         use_adg=use_adg,
         cfg_interval_start=cfg_interval_start,
         cfg_interval_end=cfg_interval_end,
+        dcw_enabled=dcw_enabled,
+        dcw_mode=dcw_mode,
+        dcw_scaler=dcw_scaler,
+        dcw_high_scaler=dcw_high_scaler,
+        dcw_wavelet=dcw_wavelet,
     )
 
     # Build generation config
@@ -212,11 +333,20 @@ def main():
     parser.add_argument("--no-cot-metas", action="store_true", help="Disable CoT for metadata")
     parser.add_argument("--no-cot-caption", action="store_true", help="Disable CoT for caption")
     parser.add_argument("--no-cot-language", action="store_true", help="Disable CoT for language")
+    parser.add_argument("--lm-model", type=str, default="", help="LLM model path or name")
+    parser.add_argument("--lm-backend", type=str, default="pt", choices=["pt", "vllm", "mlx", "auto"], help="LLM backend")
+    parser.add_argument("--dit-model", type=str, default="", help="DiT model path or name")
+    parser.add_argument("--vae-checkpoint", type=str, default="official", help="VAE checkpoint path or name")
 
     # Advanced parameters
     parser.add_argument("--use-adg", action="store_true", help="Use Adaptive Dual Guidance")
     parser.add_argument("--cfg-interval-start", type=float, default=0.0, help="CFG interval start")
     parser.add_argument("--cfg-interval-end", type=float, default=1.0, help="CFG interval end")
+    parser.add_argument("--no-dcw", action="store_true", help="Disable Dual Conditioning Wavelet")
+    parser.add_argument("--dcw-mode", type=str, default="double", choices=["double", "single", "none"], help="DCW conditioning mode")
+    parser.add_argument("--dcw-scaler", type=float, default=None, help="DCW scaler")
+    parser.add_argument("--dcw-high-scaler", type=float, default=None, help="DCW high scaler")
+    parser.add_argument("--dcw-wavelet", type=str, default="haar", help="DCW wavelet base")
 
     # Output
     parser.add_argument("--output-dir", type=str, default=None, help="Output directory")
@@ -264,14 +394,25 @@ def main():
             use_cot_metas=not args.no_cot_metas,
             use_cot_caption=not args.no_cot_caption,
             use_cot_language=not args.no_cot_language,
+            lm_model=args.lm_model,
+            lm_backend=args.lm_backend,
 
             # Advanced
             use_adg=args.use_adg,
             cfg_interval_start=args.cfg_interval_start,
             cfg_interval_end=args.cfg_interval_end,
+            dcw_enabled=not args.no_dcw,
+            dcw_mode=args.dcw_mode,
+            dcw_scaler=args.dcw_scaler,
+            dcw_high_scaler=args.dcw_high_scaler,
+            dcw_wavelet=args.dcw_wavelet,
 
             # Output
             output_dir=args.output_dir,
+
+            # Model selection
+            dit_model=args.dit_model,
+            vae_checkpoint=args.vae_checkpoint,
         )
 
         if args.json:

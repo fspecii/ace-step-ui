@@ -852,6 +852,13 @@ function AppContent() {
         trackName: params.trackName,
         completeTrackClasses: params.completeTrackClasses,
         isFormatCaption: params.isFormatCaption,
+        ditModel: params.ditModel,
+        dcwEnabled: params.dcwEnabled,
+        dcwMode: params.dcwMode,
+        dcwScaler: params.dcwScaler,
+        dcwHighScaler: params.dcwHighScaler,
+        dcwWavelet: params.dcwWavelet,
+        vaeModel: params.vaeModel,
       }, token);
 
       beginPollingJob(job.jobId, tempId);
