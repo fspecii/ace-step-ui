@@ -7,6 +7,17 @@ dotenv.config();
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+const musicProvider = process.env.MUSIC_GENERATION_PROVIDER?.toLowerCase() === 'minimax'
+  ? 'minimax' as const
+  : 'local' as const;
+const minimaxRegion = process.env.MINIMAX_REGION === 'cn_zh' ? 'cn_zh' as const : 'global_en' as const;
+const minimaxOutputFormat = process.env.MINIMAX_MUSIC_OUTPUT_FORMAT === 'hex' ? 'hex' as const : 'url' as const;
+const minimaxAudioFormat = process.env.MINIMAX_MUSIC_AUDIO_FORMAT === 'wav'
+  ? 'wav' as const
+  : process.env.MINIMAX_MUSIC_AUDIO_FORMAT === 'pcm'
+    ? 'pcm' as const
+    : 'mp3' as const;
+
 export const config = {
   port: parseInt(process.env.PORT || '3001', 10),
   nodeEnv: process.env.NODE_ENV || 'development',
@@ -19,6 +30,18 @@ export const config = {
   // ACE-Step API (local)
   acestep: {
     apiUrl: process.env.ACESTEP_API_URL || 'http://localhost:8001',
+  },
+
+  music: {
+    provider: musicProvider,
+    minimax: {
+      apiKey: process.env.MINIMAX_API_KEY || '',
+      region: minimaxRegion,
+      model: process.env.MINIMAX_MUSIC_MODEL || 'music-3.0',
+      stream: process.env.MINIMAX_MUSIC_STREAM === 'true',
+      outputFormat: minimaxOutputFormat,
+      audioFormat: minimaxAudioFormat,
+    },
   },
 
   // Pexels (optional - for video backgrounds)

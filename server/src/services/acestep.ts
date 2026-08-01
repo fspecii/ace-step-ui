@@ -21,6 +21,12 @@ function getAudioDuration(filePath: string): number {
 import { fileURLToPath } from 'url';
 import { config } from '../config/index.js';
 import { getGradioClient, resetGradioClient, isGradioAvailable } from './gradio-client.js';
+import {
+  generateMusicWithMiniMax,
+  MINIMAX_MUSIC_ENDPOINTS,
+  MINIMAX_MUSIC_MODELS,
+  MINIMAX_PROVIDER_NAME,
+} from './minimax.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -278,7 +284,16 @@ export interface GenerationParams {
   seed?: number;
   thinking?: boolean;
   enhance?: boolean;
-  audioFormat?: 'mp3' | 'flac';
+  audioFormat?: 'mp3' | 'flac' | 'wav' | 'pcm';
+  musicModel?: string;
+  musicRegion?: 'global_en' | 'cn_zh';
+  stream?: boolean;
+  outputFormat?: 'url' | 'hex';
+  musicAudioFormat?: 'mp3' | 'wav' | 'pcm';
+  musicSampleRate?: 16000 | 24000 | 32000 | 44100;
+  musicBitrate?: 32000 | 64000 | 128000 | 256000;
+  lyricsOptimizer?: boolean;
+  aigcWatermark?: boolean;
   inferMethod?: 'ode' | 'sde';
   shift?: number;
 
@@ -327,6 +342,7 @@ export interface GenerationParams {
 interface GenerationResult {
   audioUrls: string[];
   duration: number;
+  audioFormat?: 'mp3' | 'flac' | 'wav' | 'pcm';
   bpm?: number;
   keyScale?: string;
   timeSignature?: string;
@@ -368,6 +384,9 @@ let isProcessingQueue = false;
 
 // Health check - verify Gradio app is reachable
 export async function checkSpaceHealth(): Promise<boolean> {
+  if (config.music.provider === 'minimax') {
+    return config.music.minimax.apiKey.trim().length > 0;
+  }
   return isGradioAvailable();
 }
 
@@ -407,6 +426,14 @@ async function switchModelIfNeeded(ditModel: string): Promise<void> {
 
 // Discover endpoints (for compatibility)
 export async function discoverEndpoints(): Promise<unknown> {
+  if (config.music.provider === 'minimax') {
+    return {
+      provider: MINIMAX_PROVIDER_NAME,
+      region: config.music.minimax.region,
+      endpoint: MINIMAX_MUSIC_ENDPOINTS[config.music.minimax.region],
+      models: MINIMAX_MUSIC_MODELS,
+    };
+  }
   return { provider: 'acestep-gradio', endpoint: ACESTEP_API };
 }
 
@@ -484,6 +511,16 @@ async function processGeneration(
   job.status = 'running';
   job.stage = 'Starting generation...';
 
+  if (config.music.provider === 'minimax') {
+    try {
+      await processGenerationViaMiniMax(jobId, params, job);
+    } catch (error) {
+      job.status = 'failed';
+      job.error = error instanceof Error ? error.message : 'MiniMax music generation failed';
+    }
+    return;
+  }
+
   // Guard: cover/audio2audio requires a source or audio codes
   if ((params.taskType === 'cover' || params.taskType === 'audio2audio') && !params.sourceAudioUrl && !params.audioCodes) {
     job.status = 'failed';
@@ -505,6 +542,44 @@ async function processGeneration(
 
   // Fallback: Python spawn
   await processGenerationViaPython(jobId, params, job);
+}
+
+async function processGenerationViaMiniMax(
+  jobId: string,
+  params: GenerationParams,
+  job: ActiveJob,
+): Promise<void> {
+  job.stage = 'Generating music via MiniMax...';
+
+  const generated = await generateMusicWithMiniMax(params, config.music.minimax);
+  let audioUrl: string;
+
+  if (generated.outputFormat === 'url') {
+    audioUrl = generated.audio;
+  } else {
+    await mkdir(AUDIO_DIR, { recursive: true });
+    const filename = `${jobId}_0.${generated.audioFormat}`;
+    const destination = path.join(AUDIO_DIR, filename);
+    const audioBuffer = Buffer.from(generated.audio, 'hex');
+    if (audioBuffer.length === 0) {
+      throw new Error('MiniMax music generation returned empty audio');
+    }
+    await writeFile(destination, audioBuffer);
+    audioUrl = `/audio/${filename}`;
+  }
+
+  job.status = 'succeeded';
+  job.result = {
+    audioUrls: [audioUrl],
+    duration: generated.duration ?? (params.duration && params.duration > 0 ? params.duration : 0),
+    audioFormat: generated.audioFormat,
+    bpm: params.bpm,
+    keyScale: params.keyScale,
+    timeSignature: params.timeSignature,
+    status: 'succeeded',
+  };
+  job.rawResponse = generated.rawResponse;
+  job.stage = 'Completed';
 }
 
 async function processGenerationViaGradio(
@@ -604,6 +679,7 @@ async function processGenerationViaGradio(
   job.result = {
     audioUrls,
     duration: finalDuration,
+    audioFormat,
     bpm: metas.bpm || params.bpm,
     keyScale: metas.keyScale || params.keyScale,
     timeSignature: metas.timeSignature || params.timeSignature,
@@ -614,7 +690,7 @@ async function processGenerationViaGradio(
 }
 
 function isAudioFile(name: string): boolean {
-  return /\.(mp3|flac|wav|ogg|m4a)$/i.test(name);
+  return /\.(mp3|flac|wav|pcm|ogg|m4a)$/i.test(name);
 }
 
 function parseGenerationDetails(details: string | undefined): {
@@ -756,6 +832,7 @@ async function processGenerationViaPython(
     job.result = {
       audioUrls,
       duration: finalDuration,
+      audioFormat: params.audioFormat ?? 'mp3',
       bpm: params.bpm,
       keyScale: params.keyScale,
       timeSignature: params.timeSignature,
@@ -916,7 +993,13 @@ export async function getAudioStream(audioPath: string): Promise<Response> {
     const localPath = path.join(AUDIO_DIR, audioPath.replace('/audio/', ''));
     try {
       const buffer = await readFile(localPath);
-      const ext = localPath.endsWith('.flac') ? 'flac' : 'mpeg';
+      const ext = localPath.endsWith('.flac')
+        ? 'flac'
+        : localPath.endsWith('.wav')
+          ? 'wav'
+          : localPath.endsWith('.pcm')
+            ? 'L16'
+            : 'mpeg';
       return new Response(buffer, {
         status: 200,
         headers: { 'Content-Type': `audio/${ext}` }
@@ -955,7 +1038,14 @@ export async function downloadAudio(remoteUrl: string, songId: string): Promise<
   }
 
   const buffer = await response.arrayBuffer();
-  const ext = remoteUrl.includes('.flac') ? '.flac' : '.mp3';
+  const pathname = (() => {
+    try {
+      return new URL(remoteUrl, 'http://local').pathname.toLowerCase();
+    } catch {
+      return remoteUrl.toLowerCase();
+    }
+  })();
+  const ext = ['.flac', '.wav', '.pcm'].find(value => pathname.endsWith(value)) || '.mp3';
   const filename = `${songId}${ext}`;
   const filepath = path.join(AUDIO_DIR, filename);
 

@@ -5,6 +5,7 @@
   "scripts": {
     "dev": "tsx watch src/index.ts",
     "build": "tsc",
+    "test": "tsx --test test/*.test.ts",
     "start": "node dist/index.js",
     "db:migrate": "tsx src/db/migrate.ts",
     "storage:test": "tsx src/scripts/test-storage.ts"
