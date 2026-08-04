@@ -151,58 +151,78 @@ async function buildGradioArgs(params: GenerationParams): Promise<unknown[]> {
   const useCot = isEnhance || isThinking;
 
   return [
-    prompt,                                                       //  0: Music Caption
-    lyrics,                                                       //  1: Lyrics
-    params.bpm && params.bpm > 0 ? params.bpm : 0,               //  2: BPM (0 = auto)
-    params.keyScale || '',                                        //  3: KeyScale
-    params.timeSignature || '',                                   //  4: Time Signature
-    params.vocalLanguage || 'en',                                 //  5: Vocal Language
-    params.inferenceSteps ?? 8,                                   //  6: DiT Inference Steps
-    params.guidanceScale ?? 7.0,                                  //  7: DiT Guidance Scale
-    params.randomSeed !== false,                                  //  8: Random Seed
-    String(params.seed ?? -1),                                    //  9: Seed
-    referenceAudio,                                               // 10: Reference Audio (filepath | null)
-    params.duration && params.duration > 0 ? params.duration : -1, // 11: Audio Duration (-1 = auto)
-    Math.min(Math.max(params.batchSize ?? 1, 1), 16),            // 12: Batch Size (clamped 1-16)
-    sourceAudio,                                                  // 13: Source Audio (filepath | null)
-    params.audioCodes || '',                                      // 14: LM Codes Hints
-    params.repaintingStart ?? 0.0,                                // 15: Repainting Start
-    params.repaintingEnd ?? -1,                                   // 16: Repainting End
-    params.instruction || 'Fill the audio semantic mask with the style described in the text prompt.', // 17: Instruction
-    params.audioCoverStrength ?? 1.0,                             // 18: Audio Cover Strength
-    0.0,                                                          // 19: Cover Noise Strength (ACE-Step v1.5 new param, default 0.0)
-    (params.taskType === 'audio2audio' ? 'cover' : params.taskType) || 'text2music', // 20: Task Type
-    params.useAdg ?? false,                                       // 21: Use ADG
-    params.cfgIntervalStart ?? 0.0,                               // 22: CFG Interval Start
-    params.cfgIntervalEnd ?? 1.0,                                 // 23: CFG Interval End
-    params.shift ?? 3.0,                                          // 24: Shift
-    params.inferMethod || 'ode',                                  // 25: Inference Method
-    params.customTimesteps || '',                                 // 26: Custom Timesteps
-    params.audioFormat || 'mp3',                                  // 27: Audio Format
-    params.lmTemperature ?? 0.85,                                 // 28: LM Temperature
-    isThinking,                                                   // 29: Think
-    params.lmCfgScale ?? 2.0,                                    // 30: LM CFG Scale
-    params.lmTopK ?? 0,                                           // 31: LM Top-K
-    params.lmTopP ?? 0.9,                                         // 32: LM Top-P
-    params.lmNegativePrompt || 'NO USER INPUT',                   // 33: LM Negative Prompt
-    useCot ? (params.useCotMetas ?? true) : false,                // 34: CoT Metas
-    useCot ? (params.useCotCaption ?? true) : false,              // 35: CaptionRewrite
-    useCot ? (params.useCotLanguage ?? true) : false,             // 36: CoT Language
-    params.isFormatCaption ?? false,                              // 37: Is Format Caption State
-    params.constrainedDecodingDebug ?? false,                     // 38: Constrained Decoding Debug
-    params.allowLmBatch ?? true,                                  // 39: ParallelThinking
-    params.getScores ?? false,                                    // 40: Auto Score
-    params.getLrc ?? false,                                       // 41: Auto LRC (timestamped lyrics)
-    params.scoreScale ?? 0.5,                                     // 42: Quality Score Sensitivity (0.01-1.0)
-    params.lmBatchChunkSize ?? 8,                                 // 43: LM Batch Chunk Size
-    params.trackName || null,                                     // 44: Track Name
-    params.completeTrackClasses || [],                            // 45: Track Names
-    true,                                                         // 46: Enable Normalization (ACE-Step v1.5, default true)
-    -1.0,                                                         // 47: Normalization DB (ACE-Step v1.5, default -1.0)
-    0.0,                                                          // 48: Latent Shift (ACE-Step v1.5, default 0.0)
-    1.0,                                                          // 49: Latent Rescale (ACE-Step v1.5, default 1.0)
-    params.autogen ?? false,                                      // 50: AutoGen
-    // Note: current_batch_index, total_batches, batch_queue, generation_params_state
+    prompt,                                                          //  0: Music Caption  
+    lyrics,                                                          //  1: Lyrics  
+    params.bpm && params.bpm > 0 ? params.bpm : null,                //  2: BPM  
+    params.keyScale || '',                                           //  3: Key  
+    params.timeSignature || '',                                      //  4: Time Signature  
+    params.vocalLanguage || 'unknown',                                //  5: Vocal Language  
+    params.inferenceSteps ?? 8,                                      //  6: DiT Inference Steps  
+    params.guidanceScale ?? 7.0,                                     //  7: DiT Guidance Scale  
+    params.randomSeed !== false,                                     //  8: Random Seed  
+    String(params.seed ?? -1),                                       //  9: Seed  
+    referenceAudio,                                                  // 10: Reference Audio  
+    params.duration && params.duration > 0 ? params.duration : -1,   // 11: Audio Duration  
+    Math.min(Math.max(params.batchSize ?? 1, 1), 16),                // 12: Batch Size  
+    sourceAudio,                                                     // 13: Source Audio  
+    params.audioCodes || '',                                         // 14: LM Codes Hints  
+    params.repaintingStart ?? 0.0,                                   // 15: Repainting Start  
+    params.repaintingEnd ?? -1,                                      // 16: Repainting End  
+    params.instruction || 'Fill the audio semantic mask based on the given conditions:', // 17: Instruction  
+    1.0,                                                              // 18: LM Codes Strength  
+    params.audioCoverStrength ?? 0.0,                                // 19: Cover Strength (Melody Retention)  
+    false,                                                            // 20: no_fsq  
+    params.useAdg ?? false,                                          // 21: Use ADG  
+    params.cfgIntervalStart ?? 0.0,                                  // 22: CFG Interval Start  
+    params.cfgIntervalEnd ?? 1.0,                                    // 23: CFG Interval End  
+    params.shift ?? 3.0,                                             // 24: Shift  
+    params.inferMethod || 'ode',                                     // 25: Inference Method  
+    'euler',                                                         // 26: Sampler Mode  
+    0.0,                                                              // 27: Velocity Norm Threshold  
+    0.0,                                                              // 28: Velocity EMA Factor  
+    true,                                                             // 29: Enable DCW  
+    'double',                                                         // 30: DCW Mode  
+    0.05,                                                             // 31: DCW Scaler  
+    0.02,                                                             // 32: DCW High Scaler  
+    'haar',                                                           // 33: DCW Wavelet  
+    params.customTimesteps || '',                                    // 34: Custom Timesteps  
+    params.audioFormat || 'mp3',                                     // 35: Audio Format  
+    '128k',                                                          // 36: MP3 Bitrate  
+    48000,                                                            // 37: MP3 Sample Rate  
+    params.lmTemperature ?? 0.85,                                    // 38: LM Temperature  
+    isThinking,                                                       // 39: Think  
+    params.lmCfgScale ?? 2.0,                                        // 40: LM CFG Scale  
+    params.lmTopK ?? 0,                                              // 41: LM Top-K  
+    params.lmTopP ?? 0.9,                                            // 42: LM Top-P  
+    params.lmNegativePrompt || 'NO USER INPUT',                      // 43: LM Negative Prompt  
+    useCot ? (params.useCotMetas ?? true) : false,                   // 44: CoT Metas  
+    useCot ? (params.useCotCaption ?? true) : false,                 // 45: CaptionRewrite  
+    useCot ? (params.useCotLanguage ?? true) : false,                // 46: CoT Language Detection  
+    params.constrainedDecodingDebug ?? false,                        // 47: Constrained Decoding Debug  
+    params.allowLmBatch ?? true,                                     // 48: ParallelThinking  
+    params.getScores ?? false,                                       // 49: Auto Score  
+    params.getLrc ?? false,                                          // 50: Auto LRC  
+    params.scoreScale ?? 0.5,                                        // 51: Quality Score Sensitivity  
+    params.lmBatchChunkSize ?? 8,                                    // 52: LM Batch Chunk Size  
+    params.trackName || null,                                        // 53: Track Name  
+    params.completeTrackClasses || [],                               // 54: Track Names  
+    true,                                                             // 55: Enable Normalization  
+    -1.0,                                                             // 56: Target Peak (dB)  
+    0.0,                                                              // 57: Fade In (seconds)  
+    0.0,                                                              // 58: Fade Out (seconds)  
+    0.0,                                                              // 59: Latent Shift  
+    1.0,                                                              // 60: Latent Rescale  
+    'balanced',                                                       // 61: Repaint Mode  
+    0.5,                                                              // 62: Repaint Strength  
+    0.0,                                                              // 63: variance  
+    '',                                                               // 64: seed (repaint)  
+    false,                                                            // 65: Edit  
+    '',                                                               // 66: source caption  
+    '',                                                               // 67: source lyrics  
+    0.0,                                                              // 68: n_min  
+    1.0,                                                              // 69: n_max  
+    1,                                                                // 70: n_avg  
+    params.autogen ?? false,                                          // 71: AutoGen    // Note: current_batch_index, total_batches, batch_queue, generation_params_state
     // are hidden Gradio state variables and must NOT be passed via client.predict()
   ];
 }
