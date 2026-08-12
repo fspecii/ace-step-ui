@@ -1,4 +1,4 @@
-import { writeFile, mkdir, copyFile, rm, readFile } from 'fs/promises';
+import { writeFile, mkdir, copyFile, rm, readFile, stat } from 'fs/promises';
 import { spawn, execSync } from 'child_process';
 import { existsSync } from 'fs';
 import path from 'path';
@@ -23,6 +23,7 @@ import { config } from '../config/index.js';
 import { getGradioClient, resetGradioClient, isGradioAvailable } from './gradio-client.js';
 import {
   generateMusicWithMiniMax,
+  MINIMAX_MUSIC_COVER_MAX_BYTES,
   MINIMAX_MUSIC_ENDPOINTS,
   MINIMAX_MUSIC_MODELS,
   MINIMAX_PROVIDER_NAME,
@@ -294,6 +295,9 @@ export interface GenerationParams {
   musicBitrate?: 32000 | 64000 | 128000 | 256000;
   lyricsOptimizer?: boolean;
   aigcWatermark?: boolean;
+  sourceAudioBase64?: string;
+  sourceAudioDuration?: number;
+  coverFeatureId?: string;
   inferMethod?: 'ode' | 'sde';
   shift?: number;
 
@@ -551,7 +555,26 @@ async function processGenerationViaMiniMax(
 ): Promise<void> {
   job.stage = 'Generating music via MiniMax...';
 
-  const generated = await generateMusicWithMiniMax(params, config.music.minimax);
+  let providerParams = params;
+  const isCover = params.taskType === 'cover' || params.taskType === 'audio2audio';
+  if (isCover && params.sourceAudioUrl && !params.sourceAudioBase64) {
+    const sourcePath = resolveAudioPath(params.sourceAudioUrl);
+    if (sourcePath !== params.sourceAudioUrl || !/^https?:\/\//i.test(params.sourceAudioUrl)) {
+      const sourceStat = await stat(sourcePath);
+      if (sourceStat.size > MINIMAX_MUSIC_COVER_MAX_BYTES) {
+        throw new Error('MiniMax cover audio must not exceed 50 MB');
+      }
+      const sourceAudio = await readFile(sourcePath);
+      providerParams = {
+        ...params,
+        sourceAudioUrl: undefined,
+        sourceAudioBase64: sourceAudio.toString('base64'),
+        sourceAudioDuration: getAudioDuration(sourcePath) || params.sourceAudioDuration,
+      };
+    }
+  }
+
+  const generated = await generateMusicWithMiniMax(providerParams, config.music.minimax);
   let audioUrl: string;
 
   if (generated.outputFormat === 'url') {

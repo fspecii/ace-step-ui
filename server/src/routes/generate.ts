@@ -144,6 +144,9 @@ interface GenerateBody {
   musicBitrate?: 32000 | 64000 | 128000 | 256000;
   lyricsOptimizer?: boolean;
   aigcWatermark?: boolean;
+  sourceAudioBase64?: string;
+  sourceAudioDuration?: number;
+  coverFeatureId?: string;
   inferMethod?: 'ode' | 'sde';
   shift?: number;
 
@@ -272,6 +275,9 @@ router.post('/', authMiddleware, async (req: AuthenticatedRequest, res: Response
       musicBitrate,
       lyricsOptimizer,
       aigcWatermark,
+      sourceAudioBase64,
+      sourceAudioDuration,
+      coverFeatureId,
       inferMethod,
       shift,
       lmTemperature,
@@ -349,6 +355,9 @@ router.post('/', authMiddleware, async (req: AuthenticatedRequest, res: Response
       musicBitrate,
       lyricsOptimizer,
       aigcWatermark,
+      sourceAudioBase64,
+      sourceAudioDuration,
+      coverFeatureId,
       inferMethod,
       shift,
       lmTemperature,

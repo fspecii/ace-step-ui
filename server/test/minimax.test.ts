@@ -3,6 +3,7 @@ import test from 'node:test';
 import {
   generateMusicWithMiniMax,
   MINIMAX_MUSIC_AUDIO_FORMATS,
+  MINIMAX_MUSIC_COVER_MODELS,
   MINIMAX_MUSIC_MODELS,
   MINIMAX_MUSIC_OUTPUT_FORMATS,
   type MiniMaxMusicClientConfig,
@@ -23,7 +24,10 @@ test('exposes the configured generation models and formats', () => {
     'music-2.6',
     'music-3.0-free',
     'music-2.6-free',
+    'music-cover',
+    'music-cover-free',
   ]);
+  assert.deepEqual([...MINIMAX_MUSIC_COVER_MODELS], ['music-cover', 'music-cover-free']);
   assert.deepEqual([...MINIMAX_MUSIC_OUTPUT_FORMATS], ['url', 'hex']);
   assert.deepEqual([...MINIMAX_MUSIC_AUDIO_FORMATS], ['mp3', 'wav', 'pcm']);
 });
@@ -150,4 +154,89 @@ test('accepts lyrics-only custom generation without a prompt', async () => {
 
   assert.equal(requestBody.prompt, undefined);
   assert.equal(requestBody.lyrics, '[Verse]\nWords without a style prompt');
+});
+
+test('maps a cover request with an audio URL and feature ID', async () => {
+  let requestBody: Record<string, unknown> = {};
+
+  const fetchImpl: typeof fetch = async (_input, init) => {
+    requestBody = JSON.parse(String(init?.body));
+    return new Response(JSON.stringify({
+      data: { status: 2, audio: 'https://cdn.example.com/cover.mp3' },
+      base_resp: { status_code: 0 },
+    }), { status: 200 });
+  };
+
+  await generateMusicWithMiniMax({
+    customMode: true,
+    lyrics: '',
+    instrumental: false,
+    taskType: 'cover',
+    musicModel: 'music-cover-free',
+    sourceAudioUrl: 'https://cdn.example.com/source.mp3',
+    sourceAudioDuration: 180,
+    coverFeatureId: 'feature-1',
+  }, defaultConfig, fetchImpl);
+
+  assert.deepEqual(requestBody, {
+    model: 'music-cover-free',
+    stream: false,
+    output_format: 'url',
+    audio_setting: { format: 'mp3' },
+    lyrics_optimizer: true,
+    is_instrumental: false,
+    audio_url: 'https://cdn.example.com/source.mp3',
+    cover_feature_id: 'feature-1',
+  });
+});
+
+test('maps base64 audio to the default cover model', async () => {
+  let requestBody: Record<string, unknown> = {};
+
+  const fetchImpl: typeof fetch = async (_input, init) => {
+    requestBody = JSON.parse(String(init?.body));
+    return new Response(JSON.stringify({
+      data: { status: 2, audio: 'https://cdn.example.com/cover.mp3' },
+      base_resp: { status_code: 0 },
+    }), { status: 200 });
+  };
+
+  await generateMusicWithMiniMax({
+    customMode: true,
+    lyrics: '',
+    instrumental: false,
+    taskType: 'audio2audio',
+    sourceAudioBase64: Buffer.from('audio').toString('base64'),
+    sourceAudioDuration: 6,
+  }, defaultConfig, fetchImpl);
+
+  assert.equal(requestBody.model, 'music-cover');
+  assert.equal(requestBody.audio_base64, 'YXVkaW8=');
+  assert.equal(requestBody.audio_url, undefined);
+});
+
+test('validates cover input selection and duration', async () => {
+  await assert.rejects(
+    generateMusicWithMiniMax({
+      customMode: true,
+      lyrics: '',
+      instrumental: false,
+      taskType: 'cover',
+      sourceAudioUrl: 'https://cdn.example.com/source.mp3',
+      sourceAudioBase64: Buffer.from('audio').toString('base64'),
+    }, defaultConfig),
+    /exactly one audio URL or base64 audio input/,
+  );
+
+  await assert.rejects(
+    generateMusicWithMiniMax({
+      customMode: true,
+      lyrics: '',
+      instrumental: false,
+      taskType: 'cover',
+      sourceAudioUrl: 'https://cdn.example.com/source.mp3',
+      sourceAudioDuration: 361,
+    }, defaultConfig),
+    /between 6 and 360 seconds/,
+  );
 });

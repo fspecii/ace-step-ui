@@ -5,17 +5,30 @@ export const MINIMAX_MUSIC_ENDPOINTS = {
   cn_zh: 'https://api.minimaxi.com/v1/music_generation',
 } as const;
 
-export const MINIMAX_MUSIC_MODELS = [
+export const MINIMAX_MUSIC_GENERATION_MODELS = [
   'music-3.0',
   'music-2.6',
   'music-3.0-free',
   'music-2.6-free',
 ] as const;
 
+export const MINIMAX_MUSIC_COVER_MODELS = [
+  'music-cover',
+  'music-cover-free',
+] as const;
+
+export const MINIMAX_MUSIC_MODELS = [
+  ...MINIMAX_MUSIC_GENERATION_MODELS,
+  ...MINIMAX_MUSIC_COVER_MODELS,
+] as const;
+
 export const MINIMAX_MUSIC_OUTPUT_FORMATS = ['url', 'hex'] as const;
 export const MINIMAX_MUSIC_AUDIO_FORMATS = ['mp3', 'wav', 'pcm'] as const;
 export const MINIMAX_MUSIC_SAMPLE_RATES = [16000, 24000, 32000, 44100] as const;
 export const MINIMAX_MUSIC_BITRATES = [32000, 64000, 128000, 256000] as const;
+export const MINIMAX_MUSIC_COVER_MIN_SECONDS = 6;
+export const MINIMAX_MUSIC_COVER_MAX_SECONDS = 360;
+export const MINIMAX_MUSIC_COVER_MAX_BYTES = 50 * 1024 * 1024;
 
 export type MiniMaxMusicRegion = keyof typeof MINIMAX_MUSIC_ENDPOINTS;
 export type MiniMaxMusicModel = typeof MINIMAX_MUSIC_MODELS[number];
@@ -50,6 +63,10 @@ export interface MiniMaxMusicGenerationParams {
   lyricsOptimizer?: boolean;
   aigcWatermark?: boolean;
   taskType?: string;
+  sourceAudioUrl?: string;
+  sourceAudioBase64?: string;
+  sourceAudioDuration?: number;
+  coverFeatureId?: string;
 }
 
 export interface MiniMaxMusicRequest {
@@ -65,6 +82,9 @@ export interface MiniMaxMusicRequest {
   };
   lyrics_optimizer: boolean;
   is_instrumental: boolean;
+  audio_url?: string;
+  audio_base64?: string;
+  cover_feature_id?: string;
   aigc_watermark?: boolean;
 }
 
@@ -133,6 +153,28 @@ function validateHttpsUrl(value: string): void {
   }
 }
 
+function normalizeAudioBase64(value: string): string {
+  const normalized = value.replace(/^data:audio\/[a-z0-9.+-]+;base64,/i, '').trim();
+  if (!normalized || !/^[a-z0-9+/]+={0,2}$/i.test(normalized) || normalized.length % 4 !== 0) {
+    throw new Error('MiniMax cover generation requires valid base64 audio');
+  }
+  if (Buffer.byteLength(normalized, 'base64') > MINIMAX_MUSIC_COVER_MAX_BYTES) {
+    throw new Error('MiniMax cover audio must not exceed 50 MB');
+  }
+  return normalized;
+}
+
+function validateCoverDuration(duration: number | undefined): void {
+  if (duration === undefined) return;
+  if (
+    !Number.isFinite(duration)
+    || duration < MINIMAX_MUSIC_COVER_MIN_SECONDS
+    || duration > MINIMAX_MUSIC_COVER_MAX_SECONDS
+  ) {
+    throw new Error('MiniMax cover audio duration must be between 6 and 360 seconds');
+  }
+}
+
 export function buildMiniMaxMusicRequest(
   params: MiniMaxMusicGenerationParams,
   clientConfig: MiniMaxMusicClientConfig,
@@ -144,8 +186,9 @@ export function buildMiniMaxMusicRequest(
   audioFormat: MiniMaxMusicAudioFormat;
   request: MiniMaxMusicRequest;
 } {
-  if (params.taskType && params.taskType !== 'text2music') {
-    throw new Error('MiniMax music generation only supports text-based generation');
+  const isCover = params.taskType === 'cover' || params.taskType === 'audio2audio';
+  if (params.taskType && params.taskType !== 'text2music' && !isCover) {
+    throw new Error(`Unsupported MiniMax music task type: ${params.taskType}`);
   }
 
   const region = params.musicRegion ?? clientConfig.region;
@@ -154,8 +197,13 @@ export function buildMiniMaxMusicRequest(
     throw new Error(`Unsupported MiniMax region: ${region}`);
   }
 
-  const requestedModel = params.musicModel ?? params.ditModel ?? clientConfig.model;
-  if (!includesValue(MINIMAX_MUSIC_MODELS, requestedModel)) {
+  const configuredCoverModel = includesValue(MINIMAX_MUSIC_COVER_MODELS, clientConfig.model)
+    ? clientConfig.model
+    : MINIMAX_MUSIC_COVER_MODELS[0];
+  const requestedModel = params.musicModel
+    ?? (isCover ? configuredCoverModel : params.ditModel ?? clientConfig.model);
+  const allowedModels = isCover ? MINIMAX_MUSIC_COVER_MODELS : MINIMAX_MUSIC_GENERATION_MODELS;
+  if (!includesValue(allowedModels, requestedModel)) {
     throw new Error(`Unsupported MiniMax music model: ${requestedModel}`);
   }
   const model = requestedModel as MiniMaxMusicModel;
@@ -184,13 +232,13 @@ export function buildMiniMaxMusicRequest(
   const lyrics = params.instrumental ? '' : (params.lyrics || '').trim();
   const lyricsOptimizer = params.lyricsOptimizer ?? (!params.instrumental && lyrics.length === 0);
 
-  if (!prompt && !lyrics) {
+  if (!isCover && !prompt && !lyrics) {
     throw new Error('MiniMax music generation requires a prompt or lyrics');
   }
-  if (params.instrumental && !prompt) {
+  if (!isCover && params.instrumental && !prompt) {
     throw new Error('MiniMax instrumental generation requires a prompt');
   }
-  if (!params.instrumental && !lyrics && !lyricsOptimizer) {
+  if (!isCover && !params.instrumental && !lyrics && !lyricsOptimizer) {
     throw new Error('MiniMax vocal generation requires lyrics or lyrics optimization');
   }
 
@@ -212,6 +260,17 @@ export function buildMiniMaxMusicRequest(
 
   if (prompt) request.prompt = prompt;
   if (lyrics) request.lyrics = lyrics;
+  if (isCover) {
+    const sourceAudioUrl = params.sourceAudioUrl?.trim() || '';
+    const sourceAudioBase64 = params.sourceAudioBase64?.trim() || '';
+    if (Boolean(sourceAudioUrl) === Boolean(sourceAudioBase64)) {
+      throw new Error('MiniMax cover generation requires exactly one audio URL or base64 audio input');
+    }
+    validateCoverDuration(params.sourceAudioDuration);
+    if (sourceAudioUrl) request.audio_url = sourceAudioUrl;
+    if (sourceAudioBase64) request.audio_base64 = normalizeAudioBase64(sourceAudioBase64);
+    if (params.coverFeatureId?.trim()) request.cover_feature_id = params.coverFeatureId.trim();
+  }
   if (region === 'cn_zh' && params.aigcWatermark !== undefined) {
     request.aigc_watermark = params.aigcWatermark;
   }
