@@ -19,8 +19,34 @@ import {
   resolvePythonPath,
 } from '../services/acestep.js';
 import { getStorageProvider } from '../services/storage/factory.js';
+import { MINIMAX_MUSIC_MODELS, MINIMAX_PROVIDER_NAME } from '../services/minimax.js';
 
 const router = Router();
+
+type SupportedAudioFormat = 'mp3' | 'flac' | 'wav' | 'pcm';
+
+function resolveAudioFormat(audioUrl: string, fallback?: string): SupportedAudioFormat | null {
+  let pathname = audioUrl.toLowerCase();
+  try {
+    pathname = new URL(audioUrl, 'http://local').pathname.toLowerCase();
+  } catch {
+    // Use the raw value when it is not a URL.
+  }
+
+  for (const format of ['mp3', 'flac', 'wav', 'pcm'] as const) {
+    if (pathname.endsWith(`.${format}`)) return format;
+  }
+
+  return fallback && ['mp3', 'flac', 'wav', 'pcm'].includes(fallback)
+    ? fallback as SupportedAudioFormat
+    : null;
+}
+
+function audioContentType(format: SupportedAudioFormat): string {
+  if (format === 'mp3') return 'audio/mpeg';
+  if (format === 'pcm') return 'audio/L16';
+  return `audio/${format}`;
+}
 
 // Auto-generate a song title from lyrics or style when none is provided
 function autoTitle(params: { title?: string; lyrics?: string; instrumental?: boolean; style?: string; songDescription?: string }): string {
@@ -108,7 +134,19 @@ interface GenerateBody {
   randomSeed?: boolean;
   seed?: number;
   thinking?: boolean;
-  audioFormat?: 'mp3' | 'flac';
+  audioFormat?: 'mp3' | 'flac' | 'wav' | 'pcm';
+  musicModel?: string;
+  musicRegion?: 'global_en' | 'cn_zh';
+  stream?: boolean;
+  outputFormat?: 'url' | 'hex';
+  musicAudioFormat?: 'mp3' | 'wav' | 'pcm';
+  musicSampleRate?: 16000 | 24000 | 32000 | 44100;
+  musicBitrate?: 32000 | 64000 | 128000 | 256000;
+  lyricsOptimizer?: boolean;
+  aigcWatermark?: boolean;
+  sourceAudioBase64?: string;
+  sourceAudioDuration?: number;
+  coverFeatureId?: string;
   inferMethod?: 'ode' | 'sde';
   shift?: number;
 
@@ -228,6 +266,18 @@ router.post('/', authMiddleware, async (req: AuthenticatedRequest, res: Response
       seed,
       thinking,
       audioFormat,
+      musicModel,
+      musicRegion,
+      stream,
+      outputFormat,
+      musicAudioFormat,
+      musicSampleRate,
+      musicBitrate,
+      lyricsOptimizer,
+      aigcWatermark,
+      sourceAudioBase64,
+      sourceAudioDuration,
+      coverFeatureId,
       inferMethod,
       shift,
       lmTemperature,
@@ -296,6 +346,18 @@ router.post('/', authMiddleware, async (req: AuthenticatedRequest, res: Response
       seed,
       thinking,
       audioFormat,
+      musicModel,
+      musicRegion,
+      stream,
+      outputFormat,
+      musicAudioFormat,
+      musicSampleRate,
+      musicBitrate,
+      lyricsOptimizer,
+      aigcWatermark,
+      sourceAudioBase64,
+      sourceAudioDuration,
+      coverFeatureId,
       inferMethod,
       shift,
       lmTemperature,
@@ -411,10 +473,9 @@ router.get('/status/:jobId', authMiddleware, async (req: AuthenticatedRequest, r
           // If succeeded AND we were the first to update (optimistic lock), create song records
           if (aceStatus.status === 'succeeded' && aceStatus.result && wasUpdated) {
             const params = typeof job.params === 'string' ? JSON.parse(job.params) : job.params;
-            const audioUrls = aceStatus.result.audioUrls.filter((url: string) => {
-              const lower = url.toLowerCase();
-              return lower.endsWith('.mp3') || lower.endsWith('.flac') || lower.endsWith('.wav');
-            });
+            const audioUrls = aceStatus.result.audioUrls.filter((url: string) =>
+              resolveAudioFormat(url, aceStatus.result?.audioFormat) !== null
+            );
             const localPaths: string[] = [];
             const storage = getStorageProvider();
 
@@ -427,9 +488,10 @@ router.get('/status/:jobId', authMiddleware, async (req: AuthenticatedRequest, r
 
               try {
                 const { buffer } = await downloadAudioToBuffer(audioUrl);
-                const ext = audioUrl.includes('.flac') ? '.flac' : '.mp3';
+                const format = resolveAudioFormat(audioUrl, aceStatus.result.audioFormat) || 'mp3';
+                const ext = `.${format}`;
                 const storageKey = `${req.user!.id}/${songId}${ext}`;
-                await storage.upload(storageKey, buffer, `audio/${ext.slice(1)}`);
+                await storage.upload(storageKey, buffer, audioContentType(format));
                 const storedPath = storage.getPublicUrl(storageKey);
 
                 await pool.query(
@@ -598,6 +660,19 @@ router.get('/endpoints', authMiddleware, async (_req: AuthenticatedRequest, res:
 
 router.get('/models', async (_req, res: Response) => {
   try {
+    if (config.music.provider === 'minimax') {
+      const activeModel = config.music.minimax.model;
+      res.json({
+        provider: MINIMAX_PROVIDER_NAME,
+        models: MINIMAX_MUSIC_MODELS.map(name => ({
+          name,
+          is_active: name === activeModel,
+          is_preloaded: true,
+        })),
+      });
+      return;
+    }
+
     const ACESTEP_DIR = process.env.ACESTEP_PATH || path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../../ACE-Step-1.5');
     const checkpointsDir = path.join(ACESTEP_DIR, 'checkpoints');
 

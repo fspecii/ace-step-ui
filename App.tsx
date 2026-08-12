@@ -803,6 +803,7 @@ function AppContent() {
         lyrics: params.lyrics,
         style: params.style,
         title: params.title,
+        ditModel: params.ditModel,
         instrumental: params.instrumental,
         vocalLanguage: params.vocalLanguage,
         duration: params.duration && params.duration > 0 ? params.duration : undefined,
