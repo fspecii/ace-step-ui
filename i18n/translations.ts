@@ -200,7 +200,7 @@ export const translations = {
     audioFormat: 'Audio Format',
     inferenceSteps: 'Inference Steps',
     guidanceScale: 'Guidance Scale',
-    inferMethod: 'Inference Method',
+    inferMethod: 'Sampler Mode',
     shift: 'Shift',
     timestepShiftForBase: 'Timestep shift for base models (not effective for turbo)',
     expertControls: 'EXPERT CONTROLS',
@@ -271,8 +271,8 @@ export const translations = {
     thinkingCot: 'Thinking (CoT)',
     mp3Smaller: 'MP3 (smaller)',
     flacLossless: 'FLAC (lossless)',
-    odeDeterministic: 'ODE (deterministic)',
-    sdeStochastic: 'SDE (stochastic)',
+    eulerSolver: 'Euler',
+    heunSolver: 'Heun',
     min: 'min',
     
     // CreatePanel - Drag & Drop
@@ -799,7 +799,7 @@ export const translations = {
     audioFormat: '音频格式',
     inferenceSteps: '推理步数',
     guidanceScale: '引导强度(cfg)',
-    inferMethod: '推理方法',
+    inferMethod: '采样模式',
     shift: '偏移(shift)',
     timestepShiftForBase: '基础模型的时间步偏移（turbo 模式无效）',
     expertControls: '专家控制',
@@ -870,8 +870,8 @@ export const translations = {
     thinkingCot: '思考模式（CoT）',
     mp3Smaller: 'MP3（较小）',
     flacLossless: 'FLAC（无损）',
-    odeDeterministic: 'ODE（确定性）',
-    sdeStochastic: 'SDE（随机性）',
+    eulerSolver: 'Euler',
+    heunSolver: 'Heun',
     min: '分钟',
     
     // CreatePanel - Drag & Drop
@@ -1398,7 +1398,7 @@ export const translations = {
     audioFormat: 'オーディオ形式',
     inferenceSteps: '推論ステップ',
     guidanceScale: 'ガイダンススケール',
-    inferMethod: '推論方法',
+    inferMethod: 'サンプラーモード',
     shift: 'シフト',
     timestepShiftForBase: 'ベースモデルのタイムステップシフト（turboでは無効）',
     expertControls: 'エキスパートコントロール',
@@ -1469,8 +1469,8 @@ export const translations = {
     thinkingCot: '思考（CoT）',
     mp3Smaller: 'MP3（小さい）',
     flacLossless: 'FLAC（ロスレス）',
-    odeDeterministic: 'ODE（決定論的）',
-    sdeStochastic: 'SDE（確率的）',
+    eulerSolver: 'Euler',
+    heunSolver: 'Heun',
     min: '分',
     
     // CreatePanel - Drag & Drop
@@ -1997,7 +1997,7 @@ export const translations = {
     audioFormat: '오디오 형식',
     inferenceSteps: '추론 단계',
     guidanceScale: '가이던스 스케일',
-    inferMethod: '추론 방법',
+    inferMethod: '샘플러 모드',
     shift: '시프트',
     timestepShiftForBase: '베이스 모델의 타임스텝 시프트 (turbo에서는 무효)',
     expertControls: '전문가 제어',
@@ -2068,8 +2068,8 @@ export const translations = {
     thinkingCot: '생각 (CoT)',
     mp3Smaller: 'MP3 (작음)',
     flacLossless: 'FLAC (무손실)',
-    odeDeterministic: 'ODE (결정론적)',
-    sdeStochastic: 'SDE (확률적)',
+    eulerSolver: 'Euler',
+    heunSolver: 'Heun',
     min: '분',
     
     // CreatePanel - Drag & Drop

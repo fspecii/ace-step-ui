@@ -80,7 +80,7 @@ export interface GenerationParams {
   thinking: boolean;
   enhance?: boolean;
   audioFormat: 'mp3' | 'flac';
-  inferMethod: 'ode' | 'sde';
+  inferMethod: 'euler' | 'heun';
   shift: number;
 
   // LM Parameters

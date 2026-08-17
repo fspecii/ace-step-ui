@@ -109,7 +109,7 @@ interface GenerateBody {
   seed?: number;
   thinking?: boolean;
   audioFormat?: 'mp3' | 'flac';
-  inferMethod?: 'ode' | 'sde';
+  inferMethod?: 'euler' | 'heun' | 'ode' | 'sde' | '';
   shift?: number;
 
   // LM Parameters

@@ -98,6 +98,11 @@ function resolveAudioPath(audioUrl: string): string {
   return audioUrl;
 }
 
+function normalizeSamplerMode(method: GenerationParams['inferMethod']): 'euler' | 'heun' {
+  if (method === 'heun' || method === 'sde') return 'heun';
+  return 'euler';
+}
+
 /**
  * Prepare a local audio file for Gradio upload.
  * Returns a handle_file() wrapper or null if no file.
@@ -128,7 +133,7 @@ async function prepareAudioFile(audioUrl: string | undefined): Promise<unknown> 
 }
 
 /**
- * Build the 50 positional arguments for the Gradio /generation_wrapper endpoint.
+ * Build the public positional arguments for the Gradio /generation_wrapper endpoint.
  */
 async function buildGradioArgs(params: GenerationParams): Promise<unknown[]> {
   const caption = params.style || 'pop music';
@@ -170,40 +175,59 @@ async function buildGradioArgs(params: GenerationParams): Promise<unknown[]> {
     params.repaintingEnd ?? -1,                                   // 16: Repainting End
     params.instruction || 'Fill the audio semantic mask with the style described in the text prompt.', // 17: Instruction
     params.audioCoverStrength ?? 1.0,                             // 18: Audio Cover Strength
-    0.0,                                                          // 19: Cover Noise Strength (ACE-Step v1.5 new param, default 0.0)
-    (params.taskType === 'audio2audio' ? 'cover' : params.taskType) || 'text2music', // 20: Task Type
+    0.0,                                                          // 19: Cover Noise Strength
+    false,                                                        // 20: no_fsq
     params.useAdg ?? false,                                       // 21: Use ADG
     params.cfgIntervalStart ?? 0.0,                               // 22: CFG Interval Start
     params.cfgIntervalEnd ?? 1.0,                                 // 23: CFG Interval End
     params.shift ?? 3.0,                                          // 24: Shift
-    params.inferMethod || 'ode',                                  // 25: Inference Method
-    params.customTimesteps || '',                                 // 26: Custom Timesteps
-    params.audioFormat || 'mp3',                                  // 27: Audio Format
-    params.lmTemperature ?? 0.85,                                 // 28: LM Temperature
-    isThinking,                                                   // 29: Think
-    params.lmCfgScale ?? 2.0,                                    // 30: LM CFG Scale
-    params.lmTopK ?? 0,                                           // 31: LM Top-K
-    params.lmTopP ?? 0.9,                                         // 32: LM Top-P
-    params.lmNegativePrompt || 'NO USER INPUT',                   // 33: LM Negative Prompt
-    useCot ? (params.useCotMetas ?? true) : false,                // 34: CoT Metas
-    useCot ? (params.useCotCaption ?? true) : false,              // 35: CaptionRewrite
-    useCot ? (params.useCotLanguage ?? true) : false,             // 36: CoT Language
-    params.isFormatCaption ?? false,                              // 37: Is Format Caption State
-    params.constrainedDecodingDebug ?? false,                     // 38: Constrained Decoding Debug
-    params.allowLmBatch ?? true,                                  // 39: ParallelThinking
-    params.getScores ?? false,                                    // 40: Auto Score
-    params.getLrc ?? false,                                       // 41: Auto LRC (timestamped lyrics)
-    params.scoreScale ?? 0.5,                                     // 42: Quality Score Sensitivity (0.01-1.0)
-    params.lmBatchChunkSize ?? 8,                                 // 43: LM Batch Chunk Size
-    params.trackName || null,                                     // 44: Track Name
-    params.completeTrackClasses || [],                            // 45: Track Names
-    true,                                                         // 46: Enable Normalization (ACE-Step v1.5, default true)
-    -1.0,                                                         // 47: Normalization DB (ACE-Step v1.5, default -1.0)
-    0.0,                                                          // 48: Latent Shift (ACE-Step v1.5, default 0.0)
-    1.0,                                                          // 49: Latent Rescale (ACE-Step v1.5, default 1.0)
-    params.autogen ?? false,                                      // 50: AutoGen
-    // Note: current_batch_index, total_batches, batch_queue, generation_params_state
-    // are hidden Gradio state variables and must NOT be passed via client.predict()
+    'ode',                                                        // 25: Inference Method (ACE-Step expects ode/sde)
+    normalizeSamplerMode(params.inferMethod),                     // 26: Sampler Mode (euler/heun)
+    0.0,                                                          // 27: Velocity Norm Threshold
+    0.0,                                                          // 28: Velocity EMA Factor
+    true,                                                         // 29: Enable DCW
+    'double',                                                     // 30: DCW Mode
+    0.02,                                                         // 31: DCW Scaler
+    0.06,                                                         // 32: DCW High Scaler
+    'haar',                                                       // 33: DCW Wavelet
+    params.customTimesteps || '',                                 // 34: Custom Timesteps
+    params.audioFormat || 'mp3',                                  // 35: Audio Format
+    '128k',                                                       // 36: MP3 Bitrate
+    48000,                                                        // 37: MP3 Sample Rate
+    params.lmTemperature ?? 0.85,                                 // 38: LM Temperature
+    isThinking,                                                   // 39: Think
+    params.lmCfgScale ?? 2.0,                                     // 40: LM CFG Scale
+    params.lmTopK ?? 0,                                           // 41: LM Top-K
+    params.lmTopP ?? 0.9,                                         // 42: LM Top-P
+    params.lmNegativePrompt || 'NO USER INPUT',                   // 43: LM Negative Prompt
+    useCot ? (params.useCotMetas ?? true) : false,                // 44: CoT Metas
+    useCot ? (params.useCotCaption ?? true) : false,              // 45: CaptionRewrite
+    useCot ? (params.useCotLanguage ?? true) : false,             // 46: CoT Language
+    params.constrainedDecodingDebug ?? false,                     // 47: Constrained Decoding Debug
+    params.allowLmBatch ?? true,                                  // 48: ParallelThinking
+    params.getScores ?? false,                                    // 49: Auto Score
+    params.getLrc ?? false,                                       // 50: Auto LRC (timestamped lyrics)
+    params.scoreScale ?? 0.5,                                     // 51: Quality Score Sensitivity (0.01-1.0)
+    params.lmBatchChunkSize ?? 8,                                 // 52: LM Batch Chunk Size
+    params.trackName || null,                                     // 53: Track Name
+    params.completeTrackClasses || [],                            // 54: Track Names
+    true,                                                         // 55: Enable Normalization
+    -1.0,                                                         // 56: Normalization DB
+    0.0,                                                          // 57: Fade In Duration
+    0.0,                                                          // 58: Fade Out Duration
+    0.0,                                                          // 59: Latent Shift
+    1.0,                                                          // 60: Latent Rescale
+    'balanced',                                                   // 61: Repaint Mode
+    0.5,                                                          // 62: Repaint Strength
+    0.0,                                                          // 63: Retake Variance
+    '',                                                           // 64: Retake Seed
+    false,                                                        // 65: Flow Edit Morph
+    '',                                                           // 66: Flow Edit Source Caption
+    '',                                                           // 67: Flow Edit Source Lyrics
+    0.0,                                                          // 68: Flow Edit N Min
+    1.0,                                                          // 69: Flow Edit N Max
+    1.0,                                                          // 70: Flow Edit N Avg
+    params.autogen ?? false,                                      // 71: AutoGen
   ];
 }
 
@@ -279,7 +303,7 @@ export interface GenerationParams {
   thinking?: boolean;
   enhance?: boolean;
   audioFormat?: 'mp3' | 'flac';
-  inferMethod?: 'ode' | 'sde';
+  inferMethod?: 'euler' | 'heun' | 'ode' | 'sde' | '';
   shift?: number;
 
   // LM Parameters
