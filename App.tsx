@@ -817,6 +817,7 @@ function AppContent() {
         thinking: params.thinking,
         audioFormat: params.audioFormat,
         inferMethod: params.inferMethod,
+        samplerMode: params.samplerMode,
         shift: params.shift,
         lmTemperature: params.lmTemperature,
         lmCfgScale: params.lmCfgScale,

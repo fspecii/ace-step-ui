@@ -77,7 +77,7 @@ const SCRIPTS_DIR = path.join(__dirname, '../../scripts');
 const PYTHON_SCRIPT = path.join(SCRIPTS_DIR, 'simple_generate.py');
 
 // ---------------------------------------------------------------------------
-// Gradio generation: map params to the 51 positional args for /generation_wrapper
+// Gradio generation: map params to the 72 positional args for /generation_wrapper
 // ---------------------------------------------------------------------------
 
 /**
@@ -98,9 +98,12 @@ function resolveAudioPath(audioUrl: string): string {
   return audioUrl;
 }
 
-function normalizeSamplerMode(method: GenerationParams['inferMethod']): 'euler' | 'heun' {
-  if (method === 'heun' || method === 'sde') return 'heun';
-  return 'euler';
+function normalizeInferMethod(method: GenerationParams['inferMethod']): 'ode' | 'sde' {
+  return method === 'sde' ? 'sde' : 'ode';
+}
+
+function normalizeSamplerMode(mode: GenerationParams['samplerMode']): 'euler' | 'heun' {
+  return mode === 'heun' ? 'heun' : 'euler';
 }
 
 /**
@@ -197,8 +200,8 @@ async function buildGradioArgs(params: GenerationParams): Promise<unknown[]> {
     params.cfgIntervalStart ?? 0.0,                               // 22: CFG Interval Start
     params.cfgIntervalEnd ?? 1.0,                                 // 23: CFG Interval End
     params.shift ?? 3.0,                                          // 24: Shift
-    'ode',                                                        // 25: Inference Method (ACE-Step expects ode/sde)
-    normalizeSamplerMode(params.inferMethod),                     // 26: Sampler Mode (euler/heun)
+    normalizeInferMethod(params.inferMethod),                     // 25: Inference Method (ode/sde)
+    normalizeSamplerMode(params.samplerMode),                     // 26: Sampler Mode (euler/heun)
     0.0,                                                          // 27: Velocity Norm Threshold
     0.0,                                                          // 28: Velocity EMA Factor
     false,                                                        // 29: Enable DCW (upstream: true for turbo, false for base/SFT — model type unknown here)
@@ -319,7 +322,8 @@ export interface GenerationParams {
   thinking?: boolean;
   enhance?: boolean;
   audioFormat?: 'mp3' | 'flac';
-  inferMethod?: 'euler' | 'heun' | 'ode' | 'sde' | '';
+  inferMethod?: 'ode' | 'sde' | '';
+  samplerMode?: 'euler' | 'heun' | '';
   shift?: number;
 
   // LM Parameters

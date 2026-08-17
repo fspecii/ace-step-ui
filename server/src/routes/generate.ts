@@ -109,7 +109,8 @@ interface GenerateBody {
   seed?: number;
   thinking?: boolean;
   audioFormat?: 'mp3' | 'flac';
-  inferMethod?: 'euler' | 'heun' | 'ode' | 'sde' | '';
+  inferMethod?: 'ode' | 'sde' | '';
+  samplerMode?: 'euler' | 'heun' | '';
   shift?: number;
 
   // LM Parameters
@@ -229,6 +230,7 @@ router.post('/', authMiddleware, async (req: AuthenticatedRequest, res: Response
       thinking,
       audioFormat,
       inferMethod,
+      samplerMode,
       shift,
       lmTemperature,
       lmCfgScale,
@@ -297,6 +299,7 @@ router.post('/', authMiddleware, async (req: AuthenticatedRequest, res: Response
       thinking,
       audioFormat,
       inferMethod,
+      samplerMode,
       shift,
       lmTemperature,
       lmCfgScale,
