@@ -133,11 +133,16 @@ async function prepareAudioFile(audioUrl: string | undefined): Promise<unknown> 
 }
 
 /**
- * Build the public positional arguments for ACE-Step's Gradio /generation_wrapper endpoint.
+ * Build the 72 public positional arguments for ACE-Step's Gradio /generation_wrapper endpoint.
  *
  * This endpoint is positional, so every value after a changed/inserted Gradio control must
- * stay aligned with the live ACE-Step schema. To verify the contract, inspect:
- *   GET {ACESTEP_API}/gradio_api/info -> named_endpoints["/generation_wrapper"].parameters
+ * stay aligned with the live ACE-Step schema. Source of truth, in order of usefulness:
+ *   - acestep/ui/gradio/events/wiring/generation_run_wiring.py -> the inputs=[...] list
+ *   - GET {ACESTEP_API}/gradio_api/info -> named_endpoints["/generation_wrapper"].parameters
+ *
+ * gr.State inputs are NOT part of the API schema and must be omitted: task_type,
+ * is_format_caption_state, and the trailing current_batch_index, total_batches,
+ * batch_queue, generation_params_state. The wiring list has 78 entries; 72 are sent here.
  *
  * Current ACE-Step separates diffusion inference from sampler selection:
  * - infer_method accepts "ode" | "sde"
@@ -196,10 +201,10 @@ async function buildGradioArgs(params: GenerationParams): Promise<unknown[]> {
     normalizeSamplerMode(params.inferMethod),                     // 26: Sampler Mode (euler/heun)
     0.0,                                                          // 27: Velocity Norm Threshold
     0.0,                                                          // 28: Velocity EMA Factor
-    true,                                                         // 29: Enable DCW
+    false,                                                        // 29: Enable DCW (upstream: true for turbo, false for base/SFT — model type unknown here)
     'double',                                                     // 30: DCW Mode
-    0.02,                                                         // 31: DCW Scaler
-    0.06,                                                         // 32: DCW High Scaler
+    isThinking ? 0.02 : 0.05,                                     // 31: DCW Scaler (upstream THINK/NON_THINK_DCW_DEFAULTS)
+    isThinking ? 0.06 : 0.02,                                     // 32: DCW High Scaler (upstream THINK/NON_THINK_DCW_DEFAULTS)
     'haar',                                                       // 33: DCW Wavelet
     params.customTimesteps || '',                                 // 34: Custom Timesteps
     params.audioFormat || 'mp3',                                  // 35: Audio Format
@@ -520,6 +525,8 @@ async function processGeneration(
   job.stage = 'Starting generation...';
 
   // Guard: cover/audio2audio requires a source or audio codes
+  // Note: ACE-Step's task_type is a gr.State, so the Gradio path cannot select cover/repaint —
+  // it is always "text2music" server-side. The CLI fallback path does honor --task-type.
   if ((params.taskType === 'cover' || params.taskType === 'audio2audio') && !params.sourceAudioUrl && !params.audioCodes) {
     job.status = 'failed';
     job.error = `task_type='${params.taskType}' requires a source audio or audio codes`;
