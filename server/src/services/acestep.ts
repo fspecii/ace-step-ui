@@ -133,7 +133,18 @@ async function prepareAudioFile(audioUrl: string | undefined): Promise<unknown> 
 }
 
 /**
- * Build the public positional arguments for the Gradio /generation_wrapper endpoint.
+ * Build the public positional arguments for ACE-Step's Gradio /generation_wrapper endpoint.
+ *
+ * This endpoint is positional, so every value after a changed/inserted Gradio control must
+ * stay aligned with the live ACE-Step schema. To verify the contract, inspect:
+ *   GET {ACESTEP_API}/gradio_api/info -> named_endpoints["/generation_wrapper"].parameters
+ *
+ * Current ACE-Step separates diffusion inference from sampler selection:
+ * - infer_method accepts "ode" | "sde"
+ * - sampler_mode accepts "euler" | "heun"
+ *
+ * Do not remove the placeholder defaults below unless the corresponding ACE-Step Gradio
+ * controls are also removed from the public schema.
  */
 async function buildGradioArgs(params: GenerationParams): Promise<unknown[]> {
   const caption = params.style || 'pop music';

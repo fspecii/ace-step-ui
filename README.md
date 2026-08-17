@@ -440,6 +440,7 @@ Full control over every parameter:
 | **4GB GPU - Out of memory** | Use **PT** backend (default), batch size **1**, and keep **Thinking Mode OFF**. LLM features require 12GB+ |
 | **Genre always sounds like ballad** | Enable **AI Enhance** toggle in the Style section — it enriches your tags with proper metadata |
 | **AttributeError: 'NoneType'** | Update to latest ACE-Step-1.5 (fix merged in PR #109) |
+| **Gradio dropdown error during generation** | Update ACE-Step UI to a version compatible with your ACE-Step Gradio API. ACE-Step's `/generation_wrapper` endpoint is positional; mismatched versions can send values such as `euler`/`heun` to the wrong dropdown slot. |
 | **Songs show 0:00 duration** | Install FFmpeg: `sudo apt install ffmpeg` (Linux) or download from [ffmpeg.org](https://ffmpeg.org) (Windows) |
 | **LAN access not working** | Check firewall allows ports 3000 and 3001 |
 
