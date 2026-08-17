@@ -109,6 +109,17 @@ const VOCAL_LANGUAGE_KEYS = [
   { value: 'zh', key: 'vocalChineseMandarin' as const },
 ];
 
+type InferMethod = 'ode' | 'sde';
+type SamplerMode = 'euler' | 'heun';
+
+const normalizeInferMethod = (value: unknown): InferMethod => {
+  return value === 'sde' ? 'sde' : 'ode';
+};
+
+const normalizeSamplerMode = (value: unknown): SamplerMode => {
+  return value === 'heun' ? 'heun' : 'euler';
+};
+
 export const CreatePanel: React.FC<CreatePanelProps> = ({
   onGenerate,
   isGenerating,
@@ -171,7 +182,8 @@ export const CreatePanel: React.FC<CreatePanelProps> = ({
   const [enhance, setEnhance] = useState(false); // AI Enhance: uses LLM to enrich caption & generate metadata
   const [audioFormat, setAudioFormat] = useState<'mp3' | 'flac'>('mp3');
   const [inferenceSteps, setInferenceSteps] = useState(12);
-  const [inferMethod, setInferMethod] = useState<'ode' | 'sde'>('ode');
+  const [inferMethod, setInferMethod] = useState<InferMethod>('ode');
+  const [samplerMode, setSamplerMode] = useState<SamplerMode>('euler');
   const [lmBackend, setLmBackend] = useState<'pt' | 'vllm'>('pt');
   const [lmModel, setLmModel] = useState(() => {
     return localStorage.getItem('ace-lmModel') || 'acestep-5Hz-lm-0.6B';
@@ -464,7 +476,8 @@ export const CreatePanel: React.FC<CreatePanelProps> = ({
         if (data.inference_steps !== undefined) setInferenceSteps(data.inference_steps);
         if (data.guidance_scale !== undefined) setGuidanceScale(data.guidance_scale);
         if (data.audio_format !== undefined) setAudioFormat(data.audio_format);
-        if (data.infer_method !== undefined) setInferMethod(data.infer_method);
+        if (data.infer_method !== undefined) setInferMethod(normalizeInferMethod(data.infer_method));
+        if (data.sampler_mode !== undefined) setSamplerMode(normalizeSamplerMode(data.sampler_mode));
         if (data.seed !== undefined) { setSeed(data.seed); setRandomSeed(false); }
         if (data.shift !== undefined) setShift(data.shift);
         if (data.lm_temperature !== undefined) setLmTemperature(data.lm_temperature);
@@ -1007,6 +1020,7 @@ export const CreatePanel: React.FC<CreatePanelProps> = ({
         enhance,
         audioFormat,
         inferMethod,
+        samplerMode,
         lmBackend,
         lmModel,
         shift,
@@ -1999,11 +2013,26 @@ export const CreatePanel: React.FC<CreatePanelProps> = ({
                 <label className="text-xs font-medium text-zinc-600 dark:text-zinc-400" title="Deterministic is more repeatable; stochastic adds randomness.">{t('inferMethod')}</label>
                 <select
                   value={inferMethod}
-                  onChange={(e) => setInferMethod(e.target.value as 'ode' | 'sde')}
+                  onChange={(e) => setInferMethod(normalizeInferMethod(e.target.value))}
                   className="w-full bg-zinc-50 dark:bg-black/20 border border-zinc-200 dark:border-white/10 rounded-xl px-2 py-1.5 text-xs text-zinc-900 dark:text-white focus:outline-none focus:border-pink-500 dark:focus:border-pink-500 transition-colors cursor-pointer [&>option]:bg-white [&>option]:dark:bg-zinc-800 [&>option]:text-zinc-900 [&>option]:dark:text-white"
                 >
                   <option value="ode">{t('odeDeterministic')}</option>
                   <option value="sde">{t('sdeStochastic')}</option>
+                </select>
+              </div>
+            </div>
+
+            {/* Sampler Mode */}
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <label className="text-xs font-medium text-zinc-600 dark:text-zinc-400" title="Heun takes two model evaluations per step: slower, often smoother.">{t('samplerMode')}</label>
+                <select
+                  value={samplerMode}
+                  onChange={(e) => setSamplerMode(normalizeSamplerMode(e.target.value))}
+                  className="w-full bg-zinc-50 dark:bg-black/20 border border-zinc-200 dark:border-white/10 rounded-xl px-2 py-1.5 text-xs text-zinc-900 dark:text-white focus:outline-none focus:border-pink-500 dark:focus:border-pink-500 transition-colors cursor-pointer [&>option]:bg-white [&>option]:dark:bg-zinc-800 [&>option]:text-zinc-900 [&>option]:dark:text-white"
+                >
+                  <option value="euler">{t('eulerSolver')}</option>
+                  <option value="heun">{t('heunSolver')}</option>
                 </select>
               </div>
             </div>

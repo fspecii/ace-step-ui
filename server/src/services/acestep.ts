@@ -77,7 +77,7 @@ const SCRIPTS_DIR = path.join(__dirname, '../../scripts');
 const PYTHON_SCRIPT = path.join(SCRIPTS_DIR, 'simple_generate.py');
 
 // ---------------------------------------------------------------------------
-// Gradio generation: map params to the 51 positional args for /generation_wrapper
+// Gradio generation: map params to the 72 positional args for /generation_wrapper
 // ---------------------------------------------------------------------------
 
 /**
@@ -96,6 +96,14 @@ function resolveAudioPath(audioUrl: string): string {
     } catch { /* fall through */ }
   }
   return audioUrl;
+}
+
+function normalizeInferMethod(method: GenerationParams['inferMethod']): 'ode' | 'sde' {
+  return method === 'sde' ? 'sde' : 'ode';
+}
+
+function normalizeSamplerMode(mode: GenerationParams['samplerMode']): 'euler' | 'heun' {
+  return mode === 'heun' ? 'heun' : 'euler';
 }
 
 /**
@@ -128,7 +136,23 @@ async function prepareAudioFile(audioUrl: string | undefined): Promise<unknown> 
 }
 
 /**
- * Build the 50 positional arguments for the Gradio /generation_wrapper endpoint.
+ * Build the 72 public positional arguments for ACE-Step's Gradio /generation_wrapper endpoint.
+ *
+ * This endpoint is positional, so every value after a changed/inserted Gradio control must
+ * stay aligned with the live ACE-Step schema. Source of truth, in order of usefulness:
+ *   - acestep/ui/gradio/events/wiring/generation_run_wiring.py -> the inputs=[...] list
+ *   - GET {ACESTEP_API}/gradio_api/info -> named_endpoints["/generation_wrapper"].parameters
+ *
+ * gr.State inputs are NOT part of the API schema and must be omitted: task_type,
+ * is_format_caption_state, and the trailing current_batch_index, total_batches,
+ * batch_queue, generation_params_state. The wiring list has 78 entries; 72 are sent here.
+ *
+ * Current ACE-Step separates diffusion inference from sampler selection:
+ * - infer_method accepts "ode" | "sde"
+ * - sampler_mode accepts "euler" | "heun"
+ *
+ * Do not remove the placeholder defaults below unless the corresponding ACE-Step Gradio
+ * controls are also removed from the public schema.
  */
 async function buildGradioArgs(params: GenerationParams): Promise<unknown[]> {
   const caption = params.style || 'pop music';
@@ -170,40 +194,59 @@ async function buildGradioArgs(params: GenerationParams): Promise<unknown[]> {
     params.repaintingEnd ?? -1,                                   // 16: Repainting End
     params.instruction || 'Fill the audio semantic mask with the style described in the text prompt.', // 17: Instruction
     params.audioCoverStrength ?? 1.0,                             // 18: Audio Cover Strength
-    0.0,                                                          // 19: Cover Noise Strength (ACE-Step v1.5 new param, default 0.0)
-    (params.taskType === 'audio2audio' ? 'cover' : params.taskType) || 'text2music', // 20: Task Type
+    0.0,                                                          // 19: Cover Noise Strength
+    false,                                                        // 20: no_fsq
     params.useAdg ?? false,                                       // 21: Use ADG
     params.cfgIntervalStart ?? 0.0,                               // 22: CFG Interval Start
     params.cfgIntervalEnd ?? 1.0,                                 // 23: CFG Interval End
     params.shift ?? 3.0,                                          // 24: Shift
-    params.inferMethod || 'ode',                                  // 25: Inference Method
-    params.customTimesteps || '',                                 // 26: Custom Timesteps
-    params.audioFormat || 'mp3',                                  // 27: Audio Format
-    params.lmTemperature ?? 0.85,                                 // 28: LM Temperature
-    isThinking,                                                   // 29: Think
-    params.lmCfgScale ?? 2.0,                                    // 30: LM CFG Scale
-    params.lmTopK ?? 0,                                           // 31: LM Top-K
-    params.lmTopP ?? 0.9,                                         // 32: LM Top-P
-    params.lmNegativePrompt || 'NO USER INPUT',                   // 33: LM Negative Prompt
-    useCot ? (params.useCotMetas ?? true) : false,                // 34: CoT Metas
-    useCot ? (params.useCotCaption ?? true) : false,              // 35: CaptionRewrite
-    useCot ? (params.useCotLanguage ?? true) : false,             // 36: CoT Language
-    params.isFormatCaption ?? false,                              // 37: Is Format Caption State
-    params.constrainedDecodingDebug ?? false,                     // 38: Constrained Decoding Debug
-    params.allowLmBatch ?? true,                                  // 39: ParallelThinking
-    params.getScores ?? false,                                    // 40: Auto Score
-    params.getLrc ?? false,                                       // 41: Auto LRC (timestamped lyrics)
-    params.scoreScale ?? 0.5,                                     // 42: Quality Score Sensitivity (0.01-1.0)
-    params.lmBatchChunkSize ?? 8,                                 // 43: LM Batch Chunk Size
-    params.trackName || null,                                     // 44: Track Name
-    params.completeTrackClasses || [],                            // 45: Track Names
-    true,                                                         // 46: Enable Normalization (ACE-Step v1.5, default true)
-    -1.0,                                                         // 47: Normalization DB (ACE-Step v1.5, default -1.0)
-    0.0,                                                          // 48: Latent Shift (ACE-Step v1.5, default 0.0)
-    1.0,                                                          // 49: Latent Rescale (ACE-Step v1.5, default 1.0)
-    params.autogen ?? false,                                      // 50: AutoGen
-    // Note: current_batch_index, total_batches, batch_queue, generation_params_state
-    // are hidden Gradio state variables and must NOT be passed via client.predict()
+    normalizeInferMethod(params.inferMethod),                     // 25: Inference Method (ode/sde)
+    normalizeSamplerMode(params.samplerMode),                     // 26: Sampler Mode (euler/heun)
+    0.0,                                                          // 27: Velocity Norm Threshold
+    0.0,                                                          // 28: Velocity EMA Factor
+    false,                                                        // 29: Enable DCW (upstream: true for turbo, false for base/SFT — model type unknown here)
+    'double',                                                     // 30: DCW Mode
+    isThinking ? 0.02 : 0.05,                                     // 31: DCW Scaler (upstream THINK/NON_THINK_DCW_DEFAULTS)
+    isThinking ? 0.06 : 0.02,                                     // 32: DCW High Scaler (upstream THINK/NON_THINK_DCW_DEFAULTS)
+    'haar',                                                       // 33: DCW Wavelet
+    params.customTimesteps || '',                                 // 34: Custom Timesteps
+    params.audioFormat || 'mp3',                                  // 35: Audio Format
+    '128k',                                                       // 36: MP3 Bitrate
+    48000,                                                        // 37: MP3 Sample Rate
+    params.lmTemperature ?? 0.85,                                 // 38: LM Temperature
+    isThinking,                                                   // 39: Think
+    params.lmCfgScale ?? 2.0,                                     // 40: LM CFG Scale
+    params.lmTopK ?? 0,                                           // 41: LM Top-K
+    params.lmTopP ?? 0.9,                                         // 42: LM Top-P
+    params.lmNegativePrompt || 'NO USER INPUT',                   // 43: LM Negative Prompt
+    useCot ? (params.useCotMetas ?? true) : false,                // 44: CoT Metas
+    useCot ? (params.useCotCaption ?? true) : false,              // 45: CaptionRewrite
+    useCot ? (params.useCotLanguage ?? true) : false,             // 46: CoT Language
+    params.constrainedDecodingDebug ?? false,                     // 47: Constrained Decoding Debug
+    params.allowLmBatch ?? true,                                  // 48: ParallelThinking
+    params.getScores ?? false,                                    // 49: Auto Score
+    params.getLrc ?? false,                                       // 50: Auto LRC (timestamped lyrics)
+    params.scoreScale ?? 0.5,                                     // 51: Quality Score Sensitivity (0.01-1.0)
+    params.lmBatchChunkSize ?? 8,                                 // 52: LM Batch Chunk Size
+    params.trackName || null,                                     // 53: Track Name
+    params.completeTrackClasses || [],                            // 54: Track Names
+    true,                                                         // 55: Enable Normalization
+    -1.0,                                                         // 56: Normalization DB
+    0.0,                                                          // 57: Fade In Duration
+    0.0,                                                          // 58: Fade Out Duration
+    0.0,                                                          // 59: Latent Shift
+    1.0,                                                          // 60: Latent Rescale
+    'balanced',                                                   // 61: Repaint Mode
+    0.5,                                                          // 62: Repaint Strength
+    0.0,                                                          // 63: Retake Variance
+    '',                                                           // 64: Retake Seed
+    false,                                                        // 65: Flow Edit Morph
+    '',                                                           // 66: Flow Edit Source Caption
+    '',                                                           // 67: Flow Edit Source Lyrics
+    0.0,                                                          // 68: Flow Edit N Min
+    1.0,                                                          // 69: Flow Edit N Max
+    1.0,                                                          // 70: Flow Edit N Avg
+    params.autogen ?? false,                                      // 71: AutoGen
   ];
 }
 
@@ -279,7 +322,8 @@ export interface GenerationParams {
   thinking?: boolean;
   enhance?: boolean;
   audioFormat?: 'mp3' | 'flac';
-  inferMethod?: 'ode' | 'sde';
+  inferMethod?: 'ode' | 'sde' | '';
+  samplerMode?: 'euler' | 'heun' | '';
   shift?: number;
 
   // LM Parameters
@@ -485,6 +529,8 @@ async function processGeneration(
   job.stage = 'Starting generation...';
 
   // Guard: cover/audio2audio requires a source or audio codes
+  // Note: ACE-Step's task_type is a gr.State, so the Gradio path cannot select cover/repaint —
+  // it is always "text2music" server-side. The CLI fallback path does honor --task-type.
   if ((params.taskType === 'cover' || params.taskType === 'audio2audio') && !params.sourceAudioUrl && !params.audioCodes) {
     job.status = 'failed';
     job.error = `task_type='${params.taskType}' requires a source audio or audio codes`;

@@ -268,6 +268,7 @@ export interface GenerationParams {
   thinking?: boolean;
   audioFormat?: 'mp3' | 'flac';
   inferMethod?: 'ode' | 'sde';
+  samplerMode?: 'euler' | 'heun';
   shift?: number;
 
   // LM Parameters
